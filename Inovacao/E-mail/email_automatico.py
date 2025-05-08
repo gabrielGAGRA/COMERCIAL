@@ -8,8 +8,17 @@ import os
 import pickle
 import datetime
 
+# Access Streamlit secrets
+client_id = st.secrets["web"]["client_id"]
+client_secret = st.secrets["web"]["client_secret"]
+project_id = st.secrets["web"]["project_id"]
+auth_uri = st.secrets["web"]["auth_uri"]
+token_uri = st.secrets["web"]["token_uri"]
+auth_provider_x509_cert_url = st.secrets["web"]["auth_provider_x509_cert_url"]
+redirect_uris = st.secrets["web"]["redirect_uris"]
+
 # --- App credentials ---
-CLIENT_SECRETS_FILE = os.path.join(os.path.dirname(__file__), "client_secret.json")
+CLIENT_SECRETS_FILE = "client_secret.json"  # This can be an empty file or handled by Streamlit secrets
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.send",
@@ -28,11 +37,19 @@ def login():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = Flow.from_client_secrets_file(CLIENT_SECRETS_FILE, scopes=SCOPES)
-            flow.redirect_uri = "http://localhost:8501"
+            # Use the secrets for OAuth flow
+            flow = Flow.from_client_secrets_file(
+                CLIENT_SECRETS_FILE,
+                scopes=SCOPES,
+                client_id=client_id,
+                client_secret=client_secret,
+                auth_uri=auth_uri,
+                token_uri=token_uri,
+                redirect_uris=redirect_uris
+            )
             auth_url, _ = flow.authorization_url(prompt="consent")
             st.markdown(f"[Clique aqui para se conectar com o Google]({auth_url})")
-            query_params = st.query_params  # Corrected here
+            query_params = st.query_params
             if "code" in query_params:
                 flow.fetch_token(code=query_params["code"][0])
                 creds = flow.credentials
