@@ -1,54 +1,74 @@
 import streamlit as st
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
 from email.mime.text import MIMEText
 import base64
-import os
-import pickle
 import datetime
 
-# --- App credentials ---
-CLIENT_SECRETS_FILE = os.path.join(os.path.dirname(__file__), "client_secret.json")
+# --- Escopos Google ---
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.send",
 ]
-CREDENTIALS_PICKLE = "token.pkl"
 
-# --- OAuth login ---
+# --- Carrega config do OAuth via st.secrets ---
+CLIENT_CONFIG = {
+    "web": {
+        "client_id": st.secrets["oauth"]["client_id"],
+        "client_secret": st.secrets["oauth"]["client_secret"],
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uris": [st.secrets["oauth"]["redirect_uri"]],
+    }
+}
+REDIRECT_URI = st.secrets["oauth"]["redirect_uri"]
+
+
 def login():
-    creds = None
+    # inicializa credenciais na sessão
+    creds = st.session_state.get("creds", None)
 
-    if os.path.exists(CREDENTIALS_PICKLE):
-        with open(CREDENTIALS_PICKLE, "rb") as token:
-            creds = pickle.load(token)
+    # se já temos credenciais e são válidas, retorna
+    if creds and creds.valid:
+        return creds
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = Flow.from_client_secrets_file(CLIENT_SECRETS_FILE, scopes=SCOPES)
-            flow.redirect_uri = "http://localhost:8501"
-            auth_url, _ = flow.authorization_url(prompt="consent")
-            st.markdown(f"[Clique aqui para se conectar com o Google]({auth_url})")
-            query_params = st.query_params
-            st.write(query_params)
-            if "code" in query_params:
-                flow.fetch_token(code=query_params["code"])
-                creds = flow.credentials
-                with open(CREDENTIALS_PICKLE, "wb") as token:
-                    pickle.dump(creds, token)
-            st.stop()
+    # se expiraram mas têm refresh_token, atualiza
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        st.session_state.creds = creds
+        return creds
 
-    return creds
+    # senão, inicia fluxo OAuth
+    flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
+    flow.redirect_uri = REDIRECT_URI
 
-# --- Authenticated services ---
+    auth_url, _ = flow.authorization_url(prompt="consent")
+    st.markdown(f"[Conecte-se com o Google]({auth_url})")
+
+    # pega o código da URL
+    params = st.query_params
+    if "code" in params:
+        code = params["code"][0]
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        st.session_state.creds = creds
+        # limpa os query params para evitar loop
+        st.experimental_set_query_params()
+        st.experimental_rerun()
+
+    # pausa a execução até autenticarem
+    st.stop()
+
+
+# --- Serviços autenticados ---
 creds = login()
 cal_service = build("calendar", "v3", credentials=creds)
 gmail_service = build("gmail", "v1", credentials=creds)
 
-# --- Fetch events for selected date ---
+
+# --- Busca eventos num dia ---
 def fetch_events_for_date(date):
     if isinstance(date, datetime.date):
         date = datetime.datetime.combine(date, datetime.time.min)
@@ -57,8 +77,9 @@ def fetch_events_for_date(date):
     end = (date + datetime.timedelta(days=1)).replace(
         hour=0, minute=0, second=0, microsecond=0
     ).isoformat() + "Z"
+
     try:
-        events_result = (
+        events = (
             cal_service.events()
             .list(
                 calendarId="primary",
@@ -68,96 +89,100 @@ def fetch_events_for_date(date):
                 orderBy="startTime",
             )
             .execute()
+            .get("items", [])
         )
-        return events_result.get("items", [])
+        return events
     except HttpError as error:
         st.error(f"Erro ao buscar eventos: {error}")
         return []
 
-# --- Agrupar eventos e convidados ---
-def group_guests(events):
-    grouped_events = {}
 
+# --- Agrupa convidados por evento ---
+def group_guests(events):
+    grouped = {}
     for ev in events:
         guests = [
             att
             for att in ev.get("attendees", [])
             if not att["email"].endswith("@polijunior.com.br")
         ]
-        if guests:
-            event_label = ev['summary']
-            if event_label not in grouped_events:
-                grouped_events[event_label] = []
+        if not guests:
+            continue
+        label = ev["summary"]
+        if label not in grouped:
+            grouped[label] = {"event": ev, "guests": []}
+        for att in guests:
+            name = att["email"].split("@")[0]
+            grouped[label]["guests"].append((att["email"], name))
+    return grouped
 
-            for guest in guests:
-                guest_name = guest["email"].split('@')[0]
-                grouped_events[event_label].append((guest["email"], guest_name))
-    
-    return grouped_events
 
-# --- Interface Streamlit ---
-st.title("Confirmação de Reuniões")
-# Seleção da data
-date_option = st.radio("Escolha a data:", ["Hoje", "Amanhã", "Escolher Data"])
-if date_option == "Hoje":
-    selected_date = datetime.datetime.now()
-elif date_option == "Amanhã":
-    selected_date = datetime.datetime.now() + datetime.timedelta(days=1)
+# --- Interface ---
+st.title("🔔 Confirmação de Reuniões")
+
+# escolha da data
+mode = st.radio("Data:", ["Hoje", "Amanhã", "Escolher"])
+if mode == "Hoje":
+    sel_date = datetime.datetime.now()
+elif mode == "Amanhã":
+    sel_date = datetime.datetime.now() + datetime.timedelta(days=1)
 else:
-    selected_date = st.date_input("Escolha a data para enviar os e-mails", datetime.date.today())
+    sel_date = st.date_input("Escolha a data", datetime.date.today())
 
-events = fetch_events_for_date(selected_date)
-grouped_events = group_guests(events)
+events = fetch_events_for_date(sel_date)
+grouped = group_guests(events)
 
-if not grouped_events:
+if not grouped:
     st.warning("Não há eventos para a data selecionada.")
+    st.stop()
+
+# seleção de evento
+event_label = st.selectbox("Evento:", list(grouped.keys()))
+data = grouped[event_label]
+ev = data["event"]
+guest_list = data["guests"]
+
+# seleção de convidados
+names = [g[1] for g in guest_list]
+chosen = st.multiselect("Convidados:", names)
+
+if not chosen:
+    st.info("Selecione ao menos um convidado.")
+    st.stop()
+
+# prepara saudação
+selected = [g for g in guest_list if g[1] in chosen]
+emails = [g[0] for g in selected]
+names_sel = [g[1] for g in selected]
+
+if len(names_sel) == 1:
+    greet = f"Bom dia, {names_sel[0]}!"
+elif len(names_sel) == 2:
+    greet = f"Bom dia, {names_sel[0]} e {names_sel[1]}!"
 else:
-    # Mostra os eventos e permite selecionar convidados
-    selected_event = st.selectbox("Escolha o evento:", list(grouped_events.keys()))
+    greet = f"Bom dia, {names_sel[0]}, {names_sel[1]} e {names_sel[2]}!"
 
-    # Check if a valid event is selected
-    if selected_event:
-        guests = grouped_events[selected_event]
-        guests_names = [guest[1] for guest in guests]
-        chosen_guests = st.multiselect(
-            "Escolha os convidados para enviar e-mail:", guests_names
-        )
+# formata horário
+start_dt = ev["start"].get("dateTime", ev["start"].get("date"))
+time_h = datetime.datetime.fromisoformat(start_dt).strftime("%Hh")
 
-        if chosen_guests:
-            selected_guest_emails = [guest[0] for guest in guests if guest[1] in chosen_guests]
-            guest_names = [guest[1] for guest in guests if guest[1] in chosen_guests]
+# mensagem padrão com preview de {time_h}
+default = (
+    f"{greet}\nTudo bem?\n\n"
+    f"Gostaria de confirmar, tudo certo para nossa conversa hoje às {time_h}?\n\n"
+    "Nos vemos em breve!\nAtt,"
+)
+msg = st.text_area("Mensagem:", default, height=200)
 
-            guest_count = len(guest_names)
-            if guest_count == 1:
-                greeting = f"Bom dia, {guest_names[0]}!"
-            elif guest_count == 2:
-                greeting = f"Bom dia, {guest_names[0]} e {guest_names[1]}!"
-            elif guest_count == 3:
-                greeting = f"Bom dia, {guest_names[0]}, {guest_names[1]} e {guest_names[2]}!"
-            
-            # Now, we correctly get the event object based on the selected event
-            event = next(ev for ev in events if ev['summary'] == selected_event)
-            
-            # Format the time for the desired format
-            meeting_time = event["start"].get("dateTime", event["start"].get("date"))
-            meeting_time = datetime.datetime.fromisoformat(meeting_time).strftime("%Hh")  # Format: 08h, 12h, etc.
+if st.button("Enviar"):
+    sent = 0
+    mime = MIMEText(msg)
+    mime["to"] = ", ".join(emails)
+    mime["subject"] = f"Confirmação: {event_label}"
+    raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
 
-            default_msg = f"""{greeting}\nTudo bem?\n\nGostaria de confirmar, tudo certo para nossa conversa hoje às {meeting_time}?\n\nNos vemos em breve!\nAtt,"""
-            msg = st.text_area("Personalize sua mensagem:", default_msg)
-
-            if st.button("Enviar Emails"):
-                sent = 0
-                for email in selected_guest_emails:
-                    personalized = msg.format()
-                    mime = MIMEText(personalized)
-                    mime["to"] = ", ".join(selected_guest_emails)
-                    mime["subject"] = f"Confirmação: {selected_event}"
-                    raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
-                    try:
-                        gmail_service.users().messages().send(
-                            userId="me", body={"raw": raw}
-                        ).execute()
-                        sent += 1
-                    except HttpError as error:
-                        st.error(f"Falha ao enviar para {', '.join(selected_guest_emails)}: {error}")
-                st.success(f"Foram enviados {sent} emails.")
+    try:
+        gmail_service.users().messages().send(userId="me", body={"raw": raw}).execute()
+        st.success("E-mail enviado com sucesso!")
+    except HttpError as e:
+        st.error(f"Erro ao enviar: {e}")
