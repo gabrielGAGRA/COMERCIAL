@@ -20,10 +20,10 @@ CLIENT_CONFIG = {
         "client_secret": st.secrets["oauth"]["client_secret"],
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": [st.secrets["oauth"]["redirect_uri"]],
+        "redirect_uris": [st.secrets["oauth"]["redirect_uris"]],
     }
 }
-REDIRECT_URI = st.secrets["oauth"]["redirect_uri"]
+REDIRECT_URIS = st.secrets["oauth"]["redirect_uris"]
 
 
 def login():
@@ -42,7 +42,7 @@ def login():
 
     # senão, inicia fluxo OAuth
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
-    flow.redirect_uri = REDIRECT_URI
+    flow.redirect_uris = REDIRECT_URIS
 
     auth_url, _ = flow.authorization_url(prompt="consent")
     st.markdown(f"[Conecte-se com o Google]({auth_url})")
