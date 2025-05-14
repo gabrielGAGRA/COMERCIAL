@@ -7,7 +7,7 @@ from email.mime.text import MIMEText
 import base64
 import datetime
 from bs4 import BeautifulSoup
-from google.auth.exceptions import RefreshError
+from google.auth.exceptions import RefreshError, OAuth2Error
 
 # --- Escopos Google ---
 SCOPES = [
@@ -62,18 +62,15 @@ def login():
         try:
             creds.refresh(Request())
             st.session_state.creds = creds
-            # st.toast("Sessão atualizada!", icon="✅") # Feedback opcional
             return creds
         except RefreshError as e:
             st.warning(
                 f"Sua sessão expirou e não pôde ser atualizada automaticamente: {e}. Por favor, faça login novamente."
             )
-            # Limpa credenciais ruins/expiradas para forçar um novo login completo
             if "creds" in st.session_state:
                 del st.session_state.creds
             if "user_signature" in st.session_state:
                 del st.session_state.user_signature
-            # A execução continuará para mostrar o link de login
         except Exception as e:  # Outros erros possíveis durante o refresh
             st.warning(
                 f"Erro ao tentar atualizar a sessão: {e}. Por favor, faça login novamente."
@@ -82,73 +79,97 @@ def login():
                 del st.session_state.creds
             if "user_signature" in st.session_state:
                 del st.session_state.user_signature
-            # A execução continuará para mostrar o link de login
 
     # --- Se não há credenciais válidas ou atualizáveis, prossegue com o fluxo OAuth ---
-
-    flow = Flow.from_client_config(
-        CLIENT_CONFIG, scopes=SCOPES
-    )  # SCOPES agora inclui "openid"
+    flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
     flow.redirect_uri = SINGLE_REDIRECT_URI
 
     query_params = st.query_params
-    auth_code = query_params.get("code")  # Pega o 'code' da URL
+    auth_code = query_params.get("code")
 
     if auth_code:
-        # Garante que auth_code é uma string (query_params pode retornar lista)
         if isinstance(auth_code, list):
             auth_code = auth_code[0]
-
         try:
-            # Troca o código de autorização por credenciais (tokens)
             flow.fetch_token(code=auth_code)
             new_creds = flow.credentials
-            st.session_state.creds = new_creds  # Salva as novas credenciais na sessão
+            st.session_state.creds = new_creds
 
-            # Limpa os parâmetros da URL (code, state, etc.)
-            # Requer Streamlit 1.29+ para st.query_params.clear()
-            # Para versões mais antigas, use st.experimental_set_query_params()
-            st.query_params.clear()
+            # Tenta limpar os parâmetros da URL
+            try:
+                st.query_params.clear()  # Streamlit 1.29+
+            except AttributeError:
+                st.experimental_set_query_params()  # Fallback para versões mais antigas
 
-            st.rerun()  # Reexecuta o script para refletir o estado de login e limpar a UI
+            st.rerun()
 
-        except (
-            Exception
-        ) as e:  # Captura erros como o de "Scope has changed" ou token inválido
-            st.error(f"Erro ao processar o código de autorização: {e}")
-            # Limpa estado da sessão que pode estar problemático
+        except Exception as e:  # Captura OAuth2Error e outros erros
+            error_message = f"Erro ao processar o código de autorização: {e}"
+            st.error(error_message)
+            # Log interno para depuração (aparecerá nos logs do Streamlit Cloud, por exemplo)
+            print(f"OAuth Error in fetch_token: {e}")
+
+            # Limpa credenciais da sessão, pois a tentativa falhou
             if "creds" in st.session_state:
                 del st.session_state.creds
             if "user_signature" in st.session_state:
                 del st.session_state.user_signature
-            st.stop()  # Para a execução para evitar mais erros
+
+            cleaned_url_attempted = False
+            if (
+                "code" in st.query_params
+            ):  # Verifica se 'code' ainda está nos parâmetros
+                try:
+                    st.query_params.clear()  # Tenta limpar (Streamlit 1.29+)
+                    cleaned_url_attempted = True
+                except AttributeError:
+                    try:
+                        st.experimental_set_query_params()  # Fallback
+                        cleaned_url_attempted = True
+                    except Exception as e_qp_clear:
+                        print(f"Erro ao tentar limpar query_params: {e_qp_clear}")
+
+            if cleaned_url_attempted:
+                st.info(
+                    "Ocorreu um problema com o código de autorização. A URL foi ajustada. A página será recarregada para que você possa tentar o login novamente."
+                )
+                # O rerun aqui é importante para que na próxima execução os query_params estejam de fato limpos
+                st.rerun()
+            else:
+                st.warning(
+                    "Falha no login. Se o erro persistir, tente remover manualmente '?code=...' da URL do seu navegador e recarregar a página."
+                )
+
+            if "invalid_grant" in str(e).lower():
+                st.markdown(
+                    """
+                **Dica para erro 'invalid_grant':**
+                Este erro frequentemente significa que o código de autorização é inválido, expirou, ou já foi usado. Também pode ocorrer se o 'URI de Redirecionamento' não estiver configurado corretamente:
+                1.  Certifique-se de que o URI em `st.secrets["oauth"]["redirect_uris"][0]` (`"""
+                    + SINGLE_REDIRECT_URI
+                    + """`) é o URI exato registrado no Google Cloud Console para este cliente OAuth. Verifique `http` vs `https` e barras (`/`) no final.
+                2.  Evite recarregar a página ou usar links antigos que contenham um parâmetro `code=` na URL, pois códigos são de uso único.
+                """
+                )
+            st.stop()  # Para a execução para evitar mais problemas nesta rodada
 
     else:  # Nenhum código de autorização na URL, então mostra o link de login
-        # Gera a URL de autorização
-        # access_type="offline" é crucial para obter um refresh_token
-        # prompt="consent" força a tela de consentimento (útil quando escopos mudam)
         auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
-
         st.markdown(
             f"### Autenticação Necessária \nPara usar esta funcionalidade, por favor, "
             f"[conecte-se com sua conta Google clicando aqui]({auth_url}). \n\n"
             "Você será redirecionado de volta para esta página após a autorização."
         )
         st.info("Aguardando autorização do Google...")
-        st.stop()  # Para a execução até o usuário clicar no link e retornar com um código
+        st.stop()
 
-    # Fallback: Se chegamos aqui, algo não saiu como esperado.
-    # Verifica uma última vez se as credenciais são válidas.
+    # Fallback final (idealmente não alcançado)
     final_creds_check = st.session_state.get("creds")
     if final_creds_check and final_creds_check.valid:
         return final_creds_check
     else:
-        # Se não há código na URL, ainda estamos aguardando o usuário clicar no link.
-        # Se havia um código, mas as credenciais não são válidas, o erro já foi mostrado.
-        # Esta parte é mais um "safe-stop".
-        if not auth_code:
+        if not auth_code:  # Se não havia código, ainda está aguardando
             st.info("Aguardando redirecionamento do Google para autenticação.")
-        # Não precisa de um 'else' aqui, pois o erro já foi tratado no 'except' do fetch_token.
         st.stop()
 
 
