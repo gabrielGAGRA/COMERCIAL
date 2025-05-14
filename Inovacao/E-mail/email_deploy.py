@@ -11,11 +11,11 @@ from google.auth.exceptions import RefreshError, OAuth2Error
 
 # --- Escopos Google ---
 SCOPES = [
-    "openid",  # ADICIONADO
-    "https://www.googleapis.com/auth/calendar.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.settings.basic",
-    "https://www.googleapis.com/auth/userinfo.email",
+    "openid",  # Necessário para compatibilidade com algumas bibliotecas OAuth e fluxos
+    "https://www.googleapis.com/auth/calendar.readonly",  # Permissão que você já tinha
+    "https://www.googleapis.com/auth/gmail.send",  # Permissão que você já tinha
+    "https://www.googleapis.com/auth/gmail.settings.basic",  # Para ler as configurações de assinatura
+    "https://www.googleapis.com/auth/userinfo.email",  # Para ler o endereço de e-mail do usuário
 ]
 
 # --- Carrega config do OAuth via st.secrets ---
