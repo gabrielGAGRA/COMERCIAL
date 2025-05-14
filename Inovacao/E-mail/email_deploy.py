@@ -9,11 +9,11 @@ import datetime
 from bs4 import BeautifulSoup  # NOVO IMPORT ADICIONADO
 
 # --- Escopos Google ---
-# --- Escopos Google ---
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.settings.basic",  # NOVO ESCOPO ADICIONADO
+    "https://www.googleapis.com/auth/gmail.settings.basic",  # Para ler as configurações de assinatura
+    "https://www.googleapis.com/auth/userinfo.email",  # NOVO: Para ler o endereço de e-mail do usuário
 ]
 
 # --- Carrega config do OAuth via st.secrets ---
