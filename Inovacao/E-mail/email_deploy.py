@@ -6,14 +6,16 @@ from googleapiclient.errors import HttpError
 from email.mime.text import MIMEText
 import base64
 import datetime
-from bs4 import BeautifulSoup  # NOVO IMPORT ADICIONADO
+from bs4 import BeautifulSoup
+from google.auth.exceptions import RefreshError
 
 # --- Escopos Google ---
 SCOPES = [
+    "openid",  # ADICIONADO
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.settings.basic",  # Para ler as configurações de assinatura
-    "https://www.googleapis.com/auth/userinfo.email",  # NOVO: Para ler o endereço de e-mail do usuário
+    "https://www.googleapis.com/auth/gmail.settings.basic",
+    "https://www.googleapis.com/auth/userinfo.email",
 ]
 
 # --- Carrega config do OAuth via st.secrets ---
@@ -49,69 +51,105 @@ SINGLE_REDIRECT_URI = st.secrets["oauth"]["redirect_uris"][
 
 
 def login():
-    # inicializa credenciais na sessão
-    creds = st.session_state.get("creds", None)
+    creds = st.session_state.get("creds")
 
-    # se já temos credenciais e são válidas, retorna
+    # 1. Verifica credenciais existentes e válidas
     if creds and creds.valid:
         return creds
 
-    # se expiraram mas têm refresh_token, atualiza
+    # 2. Tenta atualizar credenciais expiradas se houver um refresh_token
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        st.session_state.creds = creds
-        return creds
+        try:
+            creds.refresh(Request())
+            st.session_state.creds = creds
+            # st.toast("Sessão atualizada!", icon="✅") # Feedback opcional
+            return creds
+        except RefreshError as e:
+            st.warning(
+                f"Sua sessão expirou e não pôde ser atualizada automaticamente: {e}. Por favor, faça login novamente."
+            )
+            # Limpa credenciais ruins/expiradas para forçar um novo login completo
+            if "creds" in st.session_state:
+                del st.session_state.creds
+            if "user_signature" in st.session_state:
+                del st.session_state.user_signature
+            # A execução continuará para mostrar o link de login
+        except Exception as e:  # Outros erros possíveis durante o refresh
+            st.warning(
+                f"Erro ao tentar atualizar a sessão: {e}. Por favor, faça login novamente."
+            )
+            if "creds" in st.session_state:
+                del st.session_state.creds
+            if "user_signature" in st.session_state:
+                del st.session_state.user_signature
+            # A execução continuará para mostrar o link de login
 
-    # senão, inicia fluxo OAuth
-    flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
-    flow.redirect_uri = SINGLE_REDIRECT_URI  # CORRIGIDO
+    # --- Se não há credenciais válidas ou atualizáveis, prossegue com o fluxo OAuth ---
 
-    auth_url, _ = flow.authorization_url(prompt="consent")
-    # Adiciona um link claro para o usuário clicar
-    st.markdown(
-        f"### Aviso: \nPara continuar, por favor, [conecte-se com o Google clicando aqui]({auth_url}). \n\nApós autorizar, você será redirecionado de volta para esta página."
-    )
+    flow = Flow.from_client_config(
+        CLIENT_CONFIG, scopes=SCOPES
+    )  # SCOPES agora inclui "openid"
+    flow.redirect_uri = SINGLE_REDIRECT_URI
 
-    # pega o código da URL
-    # Acessando st.query_params diretamente pode ser mais robusto com Streamlit > 1.29
-    # Para versões anteriores, st.experimental_get_query_params() pode ser necessário.
-    # Vamos usar st.query_params que é a forma mais atual.
     query_params = st.query_params
-    if "code" in query_params:
-        code = str(query_params["code"])  # Garante que é uma string
+    auth_code = query_params.get("code")  # Pega o 'code' da URL
 
-        # Limpa os query params para evitar loop ANTES de buscar o token
-        # e ANTES do rerun, para que a URL esteja limpa na próxima interação.
-        # A forma de limpar pode variar um pouco com a versão do Streamlit
-        # st.experimental_set_query_params() # Para versões mais antigas
-        # st.query_params.clear() # Pode não ser a forma correta de limpar para redirecionamento
-        # A melhor abordagem é redirecionar para a página sem os parâmetros após obter o token.
-        # No entanto, para este fluxo, o rerun após salvar as credenciais costuma funcionar.
+    if auth_code:
+        # Garante que auth_code é uma string (query_params pode retornar lista)
+        if isinstance(auth_code, list):
+            auth_code = auth_code[0]
 
         try:
-            flow.fetch_token(code=code)
-            creds = flow.credentials
-            st.session_state.creds = creds
+            # Troca o código de autorização por credenciais (tokens)
+            flow.fetch_token(code=auth_code)
+            new_creds = flow.credentials
+            st.session_state.creds = new_creds  # Salva as novas credenciais na sessão
 
-            # Limpa os parâmetros da URL após obter o token com sucesso
-            # e antes do rerun para evitar que o código seja processado novamente.
-            st.query_params.clear()  # Se st.query_params for um objeto mutável tipo dict
-            # ou st.experimental_set_query_params() # Se precisar limpar via API específica
+            # Limpa os parâmetros da URL (code, state, etc.)
+            # Requer Streamlit 1.29+ para st.query_params.clear()
+            # Para versões mais antigas, use st.experimental_set_query_params()
+            st.query_params.clear()
 
-            st.rerun()  # Use st.rerun() para versões mais novas do Streamlit
+            st.rerun()  # Reexecuta o script para refletir o estado de login e limpar a UI
 
-        except Exception as e:
-            st.error(f"Erro ao buscar o token: {e}")
-            st.stop()
+        except (
+            Exception
+        ) as e:  # Captura erros como o de "Scope has changed" ou token inválido
+            st.error(f"Erro ao processar o código de autorização: {e}")
+            # Limpa estado da sessão que pode estar problemático
+            if "creds" in st.session_state:
+                del st.session_state.creds
+            if "user_signature" in st.session_state:
+                del st.session_state.user_signature
+            st.stop()  # Para a execução para evitar mais erros
 
-    # Pausa a execução até autenticarem e o código ser recebido
-    # Se não houver 'code' nos params, e não houver creds válidas, esta parte é alcançada.
-    # O link de autorização já foi mostrado acima.
-    if not creds or not creds.valid:  # Adicionado para mais clareza
+    else:  # Nenhum código de autorização na URL, então mostra o link de login
+        # Gera a URL de autorização
+        # access_type="offline" é crucial para obter um refresh_token
+        # prompt="consent" força a tela de consentimento (útil quando escopos mudam)
+        auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+
+        st.markdown(
+            f"### Autenticação Necessária \nPara usar esta funcionalidade, por favor, "
+            f"[conecte-se com sua conta Google clicando aqui]({auth_url}). \n\n"
+            "Você será redirecionado de volta para esta página após a autorização."
+        )
         st.info("Aguardando autorização do Google...")
-        st.stop()
+        st.stop()  # Para a execução até o usuário clicar no link e retornar com um código
 
-    return creds  # Retorna creds caso tenha passado por aqui com creds já válidas
+    # Fallback: Se chegamos aqui, algo não saiu como esperado.
+    # Verifica uma última vez se as credenciais são válidas.
+    final_creds_check = st.session_state.get("creds")
+    if final_creds_check and final_creds_check.valid:
+        return final_creds_check
+    else:
+        # Se não há código na URL, ainda estamos aguardando o usuário clicar no link.
+        # Se havia um código, mas as credenciais não são válidas, o erro já foi mostrado.
+        # Esta parte é mais um "safe-stop".
+        if not auth_code:
+            st.info("Aguardando redirecionamento do Google para autenticação.")
+        # Não precisa de um 'else' aqui, pois o erro já foi tratado no 'except' do fetch_token.
+        st.stop()
 
 
 def get_user_signature(gmail_service):
