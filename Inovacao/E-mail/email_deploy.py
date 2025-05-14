@@ -6,11 +6,14 @@ from googleapiclient.errors import HttpError
 from email.mime.text import MIMEText
 import base64
 import datetime
+from bs4 import BeautifulSoup  # NOVO IMPORT ADICIONADO
 
+# --- Escopos Google ---
 # --- Escopos Google ---
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.settings.basic",  # NOVO ESCOPO ADICIONADO
 ]
 
 # --- Carrega config do OAuth via st.secrets ---
@@ -111,6 +114,96 @@ def login():
     return creds  # Retorna creds caso tenha passado por aqui com creds já válidas
 
 
+def get_user_signature(gmail_service):
+    """
+    Busca a assinatura do Gmail do usuário logado e a converte para texto simples.
+    A assinatura é prefixada com o separador padrão "-- \n".
+    """
+    try:
+        # Tenta obter a configuração "sendAs" para o e-mail primário do usuário
+        user_profile = gmail_service.users().getProfile(userId="me").execute()
+        user_email = user_profile.get("emailAddress")
+
+        if not user_email:
+            st.warning(
+                "Não foi possível obter o endereço de e-mail do usuário para buscar a assinatura."
+            )
+            return ""
+
+        # Busca a configuração "sendAs" específica para o email do usuário
+        send_as_settings = (
+            gmail_service.users()
+            .settings()
+            .sendAs()
+            .get(userId="me", sendAsEmail=user_email)
+            .execute()
+        )
+        signature_html = send_as_settings.get("signature", "")
+
+        if not signature_html.strip():
+            # Nenhuma assinatura configurada ou está vazia para este alias
+            return ""
+
+        # Converte a assinatura de HTML para texto simples
+        soup = BeautifulSoup(signature_html, "html.parser")
+        signature_plain = soup.get_text(
+            separator="\n"
+        ).strip()  # Usa newline como separador
+
+        if signature_plain:
+            return f"\n\n-- \n{signature_plain}"  # Formato padrão de separador de assinatura
+        return ""
+
+    except HttpError as error:
+        # Se o erro for 404, significa que o 'sendAsEmail' específico não foi encontrado.
+        # Isso pode acontecer se o e-mail principal não tiver uma entrada 'sendAs' explícita (raro)
+        # ou se for um alias. Vamos tentar listar todos e pegar o primário.
+        if error.resp.status == 404:
+            try:
+                aliases_result = (
+                    gmail_service.users()
+                    .settings()
+                    .sendAs()
+                    .list(userId="me")
+                    .execute()
+                )
+                aliases = aliases_result.get("sendAs", [])
+                if not aliases:
+                    return ""  # Nenhuma configuração 'sendAs' encontrada
+
+                chosen_alias = next(
+                    (alias for alias in aliases if alias.get("isPrimary")), None
+                )
+                if (
+                    not chosen_alias and aliases
+                ):  # Fallback para o primeiro da lista se nenhum for primário
+                    chosen_alias = aliases[0]
+
+                if chosen_alias:
+                    signature_html = chosen_alias.get("signature", "")
+                    if signature_html.strip():
+                        soup = BeautifulSoup(signature_html, "html.parser")
+                        signature_plain = soup.get_text(separator="\n").strip()
+                        if signature_plain:
+                            return f"\n\n-- \n{signature_plain}"
+                return ""  # Nenhuma assinatura encontrada nos aliases
+            except HttpError as inner_error:
+                st.warning(
+                    f"Erro ao tentar buscar assinaturas alternativas: {inner_error}"
+                )
+                return ""
+        else:
+            st.warning(
+                f"Erro ao buscar assinatura do Gmail: {error}. A assinatura não será adicionada."
+            )
+        return ""
+    except Exception as e:
+        st.error(
+            f"Um erro inesperado ocorreu ao buscar a assinatura: {e}. A assinatura não será adicionada."
+        )
+        return ""
+
+
 # --- Serviços autenticados ---
 # Coloque esta parte dentro de um if para garantir que creds não é None
 creds = login()  # login() agora sempre retorna creds ou para a execução
@@ -127,6 +220,24 @@ else:
     # Esta parte não deveria ser alcançada se login() usa st.stop() corretamente
     st.error("Credenciais não disponíveis após o login.")
     st.stop()
+
+# Certifique-se que 'creds' e 'gmail_service' estão disponíveis aqui
+if "creds" not in st.session_state or not st.session_state.creds.valid:
+    st.warning("Por favor, faça login para continuar.")
+    st.stop()
+
+# Construa o gmail_service se ainda não o fez ou se ele não estiver na session_state
+# Esta lógica pode já existir na sua seção de "Serviços autenticados"
+if "gmail_service" not in st.session_state:
+    try:
+        st.session_state.gmail_service = build(
+            "gmail", "v1", credentials=st.session_state.creds
+        )
+    except Exception as e:
+        st.error(f"Erro ao construir o serviço Gmail: {e}")
+        st.stop()
+
+gmail_service_instance = st.session_state.gmail_service
 
 
 # --- Busca eventos num dia ---
@@ -238,6 +349,7 @@ elif len(names_sel) > 2:
 else:  # Caso names_sel esteja vazio por algum motivo (não deveria acontecer se 'chosen' não estiver vazio)
     greet = "Bom dia!"
 
+
 # formata horário
 start_info = ev["start"]
 # Verifica se é um evento de dia inteiro ('date') ou com horário específico ('dateTime')
@@ -259,31 +371,60 @@ else:
     time_h = "(horário não especificado)"  # Fallback
     horario_confirmacao = ""
 
+# Buscar a assinatura do usuário e armazenar no cache da sessão
+if "user_signature" not in st.session_state:
+    st.session_state.user_signature = get_user_signature(gmail_service_instance)
+user_signature_text = st.session_state.user_signature
 
-# mensagem padrão com preview de {time_h}
-default = (
-    f"{greet}\nTudo bem?\n\n"
-    f"Gostaria de confirmar, tudo certo para nossa conversa hoje {horario_confirmacao}?\n\n"
-    "Nos vemos em breve!\nAtt,"
+# Mensagem padrão SEM o "Att," pois a assinatura cuidará disso.
+default_body_text = (
+    f"{greet}\nTudo bem?\n\n"  # 'greet' deve estar definido antes daqui
+    f"Gostaria de confirmar, tudo certo para nossa conversa hoje {horario_confirmacao}?\n\n"  # 'horario_confirmacao' também
+    "Nos vemos em breve!"
 )
-msg = st.text_area("Mensagem:", default, height=200)
+
+msg_body_edited_by_user = st.text_area("Mensagem:", default_body_text, height=200)
+
+# Opcional: Mostrar ao usuário qual assinatura será adicionada (apenas para visualização)
+if user_signature_text:
+    st.markdown("---")
+    st.markdown("**Assinatura que será adicionada:**")
+    # st.text exibe o texto literalmente, preservando espaços e quebras de linha
+    st.text(
+        user_signature_text.strip()
+    )  # .strip() para remover quebras de linha iniciais do f-string
+    st.markdown("---")
+else:
+    st.caption(
+        "Nenhuma assinatura automática será adicionada (não configurada ou não encontrada)."
+    )
+
 
 if st.button("Enviar"):
-    if not msg.strip():  # Verifica se a mensagem não está vazia
+    if not msg_body_edited_by_user.strip():
         st.warning("A mensagem não pode estar vazia.")
     else:
-        sent = 0  # Esta variável não está sendo usada, pode ser removida se não houver contagem
-        mime = MIMEText(msg)
-        mime["to"] = ", ".join(emails)
-        mime["subject"] = f"Confirmação: {event_label}"
+        # Corpo do e-mail final é o que o usuário digitou + a assinatura
+        final_email_content = msg_body_edited_by_user
+        if user_signature_text:
+            final_email_content += (
+                user_signature_text  # A assinatura já vem com \n\n-- \n
+            )
+
+        mime = MIMEText(final_email_content)
+        mime["to"] = ", ".join(emails)  # 'emails' deve estar definido
+        mime["subject"] = (
+            f"Confirmação: {event_label}"  # 'event_label' deve estar definido
+        )
+
         raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
 
         try:
-            gmail_service.users().messages().send(
+            gmail_service_instance.users().messages().send(
                 userId="me", body={"raw": raw}
             ).execute()
             st.success("E-mail enviado com sucesso!")
         except HttpError as e:
             st.error(f"Erro ao enviar: {e}")
-        except Exception as e_gen:  # Captura outros erros potenciais
+        except Exception as e_gen:
             st.error(f"Um erro inesperado ocorreu ao enviar: {e_gen}")
