@@ -14,11 +14,13 @@ from oauthlib.oauth2 import OAuth2Error
 # --- Escopos Google ---
 SCOPES = [
     "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.settings.basic",  # Para ler as configurações de assinatura
-    "https://www.googleapis.com/auth/userinfo.email",  # Para ler o endereço de e-mail do usuário
+    "https://www.googleapis.com/auth/gmail.settings.basic",
+    "https://www.googleapis.com/auth/gmail.readonly",  #  👈 novo
 ]
+
 
 # --- Carrega config do OAuth via st.secrets ---
 # Validação para garantir que os secrets estão carregados e têm a estrutura esperada
