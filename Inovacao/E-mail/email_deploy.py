@@ -8,8 +8,6 @@ import base64
 import datetime
 from bs4 import BeautifulSoup
 from google.auth.exceptions import RefreshError
-from oauthlib.oauth2 import OAuth2Error
-
 
 # --- Escopos Google ---
 SCOPES = [
