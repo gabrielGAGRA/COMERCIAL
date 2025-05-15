@@ -449,9 +449,6 @@ dias_semana = [
 # Forçar recálculo do delta toda vez que a página é atualizada
 delta = (data_selecionada - hoje).days
 
-# Exibir data selecionada para debug (opcional)
-st.write(f"Data selecionada: {data_selecionada}, Delta: {delta} dias")
-
 if delta == 0:
     dia_mensagem = "hoje"
 elif delta == 1:
