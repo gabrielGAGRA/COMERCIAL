@@ -16,7 +16,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.settings.basic",
-    "https://www.googleapis.com/auth/gmail.readonly",  #  👈 novo
+    "https://www.googleapis.com/auth/gmail.readonly",
 ]
 
 
@@ -44,7 +44,7 @@ CLIENT_CONFIG = {
         "client_secret": st.secrets["oauth"]["client_secret"],
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": st.secrets["oauth"]["redirect_uris"],  # CORRIGIDO
+        "redirect_uris": st.secrets["oauth"]["redirect_uris"],
     }
 }
 
@@ -54,77 +54,54 @@ SINGLE_REDIRECT_URI = st.secrets["oauth"]["redirect_uris"][
 
 
 def login():
+    # Inicializa o estado de sessão para debugging se necessário
+    if "login_initialized" not in st.session_state:
+        st.session_state.login_initialized = True
+
+    # Verifica se já temos credenciais na sessão
     creds = st.session_state.get("creds")
     current_required_scopes_set = set(SCOPES)  # SCOPES definidos globalmente
 
-    # Verifica se as credenciais existentes na sessão possuem todos os escopos necessários
+    # Verifica se já temos credenciais e se elas ainda são válidas
     if creds:
-        # creds.scopes pode ser None se não houver escopos ou se for um tipo de credencial diferente
-        granted_scopes_set = set(creds.scopes if creds.scopes is not None else [])
-
-        if not current_required_scopes_set.issubset(granted_scopes_set):
-            st.warning(
-                "As permissões da aplicação foram atualizadas. "
-                "Por favor, faça login novamente para conceder as novas permissões."
-            )
-            # Invalida as credenciais atuais, pois faltam escopos
-            if "creds" in st.session_state:
-                del st.session_state.creds
-            if (
-                "user_signature" in st.session_state
-            ):  # Limpa também a assinatura em cache
-                del st.session_state.user_signature
-            creds = (
-                None  # Define creds como None para forçar o fluxo de re-login abaixo
-            )
-
-    # 1. Verifica credenciais (possivelmente agora None) e sua validade
-    if creds and creds.valid:
-        return creds
-
-    # 2. Tenta atualizar credenciais expiradas se houver um refresh_token
-    if creds and creds.expired and creds.refresh_token:
         try:
-            creds.refresh(Request())
-            st.session_state.creds = creds
+            # Se as credenciais estiverem expiradas mas tiverem um refresh_token, tente atualizá-las
+            if (
+                creds.expired
+                and hasattr(creds, "refresh_token")
+                and creds.refresh_token
+            ):
+                try:
+                    creds.refresh(Request())
+                    st.session_state.creds = creds
+                    return creds
+                except Exception as e:
+                    st.warning(f"Falha ao atualizar as credenciais: {e}")
+                    # Não apague as credenciais ainda, tente o procedimento normal de validação
 
-            # Re-verifica os escopos após o refresh (embora o refresh não altere os escopos)
-            # É mais uma verificação de sanidade.
-            refreshed_granted_scopes_set = set(
-                creds.scopes if creds.scopes is not None else []
+            # Verifica se as credenciais têm todos os escopos necessários
+            granted_scopes_set = set(
+                creds.scopes if hasattr(creds, "scopes") and creds.scopes else []
             )
-            if not current_required_scopes_set.issubset(refreshed_granted_scopes_set):
-                st.warning(
-                    "Permissões ainda desatualizadas após a atualização do token. Refazendo o login."
-                )
-                if "creds" in st.session_state:
-                    del st.session_state.creds
-                if "user_signature" in st.session_state:
-                    del st.session_state.user_signature
-                # Deixa cair para o fluxo de login completo
+
+            if current_required_scopes_set.issubset(granted_scopes_set):
+                # Credenciais válidas com todos os escopos necessários
+                return creds
             else:
-                return creds  # Retorna credenciais atualizadas e com escopos corretos
-        except RefreshError as e:
-            st.warning(
-                f"Sua sessão expirou e não pôde ser atualizada: {e}. Por favor, faça login novamente."
-            )
-            if "creds" in st.session_state:
-                del st.session_state.creds
-            if "user_signature" in st.session_state:
-                del st.session_state.user_signature
+                st.warning(
+                    "As permissões da aplicação foram atualizadas. Por favor, faça login novamente."
+                )
+                # Continue com o fluxo normal - não apague as credenciais ainda
         except Exception as e:
-            st.warning(
-                f"Erro ao tentar atualizar a sessão: {e}. Por favor, faça login novamente."
-            )
-            if "creds" in st.session_state:
-                del st.session_state.creds
-            if "user_signature" in st.session_state:
-                del st.session_state.user_signature
+            st.warning(f"Erro ao verificar credenciais existentes: {e}")
+            # Continue com o fluxo normal - não apague as credenciais ainda
 
-    # --- Se não há credenciais (ou foram invalidadas por falta de escopos), prossegue com o fluxo OAuth ---
+    # Se chegou aqui, as credenciais estão ausentes, inválidas ou não têm os escopos necessários
+    # Inicia o fluxo OAuth
     flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
     flow.redirect_uri = SINGLE_REDIRECT_URI
 
+    # Verifica se está retornando do fluxo de autenticação
     query_params = st.query_params
     auth_code = query_params.get("code")
 
@@ -132,73 +109,61 @@ def login():
         if isinstance(auth_code, list):
             auth_code = auth_code[0]
         try:
+            # Tenta obter um token com o código de autorização
             flow.fetch_token(code=auth_code)
             new_creds = flow.credentials
-            st.session_state.creds = new_creds
-            # Se o login foi refeito, a assinatura antiga (se houver) pode não ser mais válida ou relevante
-            if "user_signature" in st.session_state:
-                del st.session_state.user_signature
 
+            # Armazena as novas credenciais
+            st.session_state.creds = new_creds
+
+            # Limpa o código de autorização da URL para evitar problemas em refreshes
             try:
                 st.query_params.clear()
             except AttributeError:
                 st.experimental_set_query_params()
+
+            # Recarrega a página para iniciar com as novas credenciais
             st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao processar o código de autorização: {e}")
 
-        except (
-            Exception
-        ) as e:  # Trata erros de fetch_token (invalid_grant, scope_changed, etc.)
-            error_message = f"Erro ao processar o código de autorização: {e}"
-            st.error(error_message)
-            print(f"OAuth Error in fetch_token: {e}")  # Log no servidor
+            # Limpa o código da URL para evitar tentativas repetidas com um código inválido
+            try:
+                st.query_params.clear()
+                st.info("A URL foi limpa. Por favor, tente fazer login novamente.")
+            except:
+                st.warning(
+                    "Falha no login. Tente remover '?code=...' da URL e recarregar."
+                )
 
+            # Só agora limpamos as credenciais se houver falha
             if "creds" in st.session_state:
                 del st.session_state.creds
             if "user_signature" in st.session_state:
                 del st.session_state.user_signature
 
-            cleaned_url_attempted = False
-            if "code" in st.query_params:
-                try:
-                    st.query_params.clear()
-                    cleaned_url_attempted = True
-                except AttributeError:
-                    try:
-                        st.experimental_set_query_params()
-                        cleaned_url_attempted = True
-                    except Exception:
-                        pass  # Falha ao limpar
-
-            if cleaned_url_attempted:
-                st.info(
-                    "Problema com o código de autorização. A URL foi ajustada. A página será recarregada."
-                )
-                st.rerun()
-            else:
-                st.warning(
-                    "Falha no login. Tente remover '?code=...' da URL e recarregar."
-                )
-
-            if "invalid_grant" in str(e).lower():
-                st.markdown(
-                    f"""**Dica para erro 'invalid_grant':** Verifique se o URI de redirecionamento (`{SINGLE_REDIRECT_URI}`) está idêntico no Google Cloud Console e evite reusar códigos de autorização."""
-                )
             st.stop()
-    else:  # Mostra o link de login
-        auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+    else:
+        # Se não tem código na URL e não tem credenciais válidas,
+        # mostra o link de autorização
+        auth_url, _ = flow.authorization_url(
+            access_type="offline",  # Obter refresh_token
+            prompt="consent",  # Sempre solicitar consentimento
+            include_granted_scopes="true",  # Incluir escopos já concedidos
+        )
+
         st.markdown(
             f"### Autenticação Necessária \nPara continuar, [conecte-se com o Google clicando aqui]({auth_url})."
         )
         st.info("Aguardando autorização do Google...")
         st.stop()
 
-    # Fallback final
-    final_creds_check = st.session_state.get("creds")
-    if final_creds_check and final_creds_check.valid:
-        return final_creds_check
+    # Fallback - verifica uma última vez se temos credenciais na sessão
+    final_creds = st.session_state.get("creds")
+    if final_creds and hasattr(final_creds, "valid") and final_creds.valid:
+        return final_creds
     else:
-        if not auth_code:
-            st.info("Aguardando redirecionamento do Google.")
+        st.info("Aguardando autenticação...")
         st.stop()
 
 
