@@ -446,21 +446,34 @@ dias_semana = [
     "domingo",
 ]
 
+# Forçar recálculo do delta toda vez que a página é atualizada
 delta = (data_selecionada - hoje).days
+
+# Exibir data selecionada para debug (opcional)
+st.write(f"Data selecionada: {data_selecionada}, Delta: {delta} dias")
 
 if delta == 0:
     dia_mensagem = "hoje"
 elif delta == 1:
     dia_mensagem = "amanhã"
 elif delta > 1 and delta < 7:
-    # Usa o nome do dia da semana, exemplo: "na quarta-feira"
-    dia_semana_nome = dias_semana[data_selecionada.weekday()]  # weekday: segunda=0
-    dia_mensagem = f"nesta {dia_semana_nome}"
+    # Verificar se é na mesma semana para decidir entre "nesta" ou "na próxima"
+    hoje_semana = hoje.isocalendar()[1]  # Número da semana do ano
+    sel_semana = data_selecionada.isocalendar()[1]
+
+    # Usa o nome do dia da semana
+    dia_semana_nome = dias_semana[data_selecionada.weekday()]
+
+    # Se for na mesma semana, usa "nesta", caso contrário "na próxima"
+    if hoje_semana == sel_semana:
+        dia_mensagem = f"nesta {dia_semana_nome}"
+    else:
+        dia_mensagem = f"na próxima {dia_semana_nome}"
 else:
-    # Caso fora da semana atual, usa data completa
+    # Caso fora da próxima semana, usa data completa
     dia_mensagem = f"no dia {data_selecionada.strftime('%d/%m/%Y')}"
 
-
+# Construir o corpo da mensagem com a data correta
 default_body_text = (
     f"{greet}\nTudo bem?\n\n"
     f"Gostaria de confirmar, tudo certo para nossa conversa {dia_mensagem} {horario_confirmacao}?\n\n"
