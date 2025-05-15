@@ -464,10 +464,41 @@ if "user_signature" not in st.session_state:
     st.session_state.user_signature = get_user_signature(gmail_service_instance)
 user_signature_text = st.session_state.user_signature
 
-# Mensagem padrão SEM o "Att," pois a assinatura cuidará disso.
+# Data atual (sem hora)
+hoje = datetime.datetime.now().date()
+data_selecionada = (
+    sel_date.date() if isinstance(sel_date, datetime.datetime) else sel_date
+)
+
+# Define a string do dia para a mensagem
+dias_semana = [
+    "segunda-feira",
+    "terça-feira",
+    "quarta-feira",
+    "quinta-feira",
+    "sexta-feira",
+    "sábado",
+    "domingo",
+]
+
+delta = (data_selecionada - hoje).days
+
+if delta == 0:
+    dia_mensagem = "hoje"
+elif delta == 1:
+    dia_mensagem = "amanhã"
+elif delta > 1 and delta < 7:
+    # Usa o nome do dia da semana, exemplo: "na quarta-feira"
+    dia_semana_nome = dias_semana[data_selecionada.weekday()]  # weekday: segunda=0
+    dia_mensagem = f"nesta {dia_semana_nome}"
+else:
+    # Caso fora da semana atual, usa data completa
+    dia_mensagem = f"no dia {data_selecionada.strftime('%d/%m/%Y')}"
+
+
 default_body_text = (
-    f"{greet}\nTudo bem?\n\n"  # 'greet' deve estar definido antes daqui
-    f"Gostaria de confirmar, tudo certo para nossa conversa hoje {horario_confirmacao}?\n\n"  # 'horario_confirmacao' também
+    f"{greet}\nTudo bem?\n\n"
+    f"Gostaria de confirmar, tudo certo para nossa conversa {dia_mensagem} {horario_confirmacao}?\n\n"
     "Nos vemos em breve!"
 )
 
