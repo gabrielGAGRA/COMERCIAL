@@ -1,0 +1,31 @@
+ATAS:
+Ygor -> Gerente BPE Sênior
+Têm muito a evoluir na questão de tecnologia da informação
+Projeto: Prever o absenteísmo, turn-over
+Tem um supervisor do time dele focado só inovação, ele tá olhando empresas terceiras. Querem eleger um parcerio e entender qual seguir.
+Leonardo -> Trabalho no time do Ygor. Estão debaixo do mesmo guarda-chuva. Focado em projetos de inovação para operações LATAM.
+Têm um projeto focado em IA para prever absenteísmo
+Determinar a probabilidade de absenteísmo em cada funcionário.
+
+
+INFOS:
+- Quantos funcionários existem atualmente?
+205 funcionários
+
+- Que dados temos associados à cada funcionário (idade, cargo, absenteísmo prévio)? 
+Temos idade, cargo, absenteísmo prévio, nome do gerente, escala, função, estado civil, gênero, tempo de empresa. (um ponto importante aqui é que não sabemos se vamos utilizar todas essas informações no modelo por conta de Compliance -&gt; precisamos entender com nosso Jurídico essa questão)
+
+- Qual a volumetria (quantidade de linhas/dados)?
+Planilha com dados dos funcionários com o range de 1mes -&gt; 17 colunas x 800 linhas
+
+- Onde estão esses dados?
+Está com o Departamento de Recursos Humanos
+
+-Quais os principais dados externos a serem extraídos (calendário de feriados, previsão do tempo)?
+Feriados, previsão do tempo, distância entre residência do funcionário e o armazém
+
+- Quais são as principais hipóteses ou abordagens a serem feitas?
+Previsão de Absenteísmo e Previsão de Presenteísmo
+
+- Qual a noção de sucesso desse projeto?
+Ter essas previsões e comparar com o resultado real. Dessa forma vamos entender se a ferramenta está prevendo de forma correta e tomar ações preventivas para mitigar a ausência do funcionário no dia seguinte.
