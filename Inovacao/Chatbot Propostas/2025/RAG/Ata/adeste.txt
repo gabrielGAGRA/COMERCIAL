@@ -22,3 +22,6 @@ Usam DataBricks, DataFabric, PBI
 SAP é o ERP
 
 Não quer escopo fechado -> quer dinamismo e mudança -> disse que está propenso a fechar se trouxermos isso
+
+
+ATA ORGANIZADA:

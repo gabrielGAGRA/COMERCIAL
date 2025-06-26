@@ -42,4 +42,7 @@ modelo que sugira um valor
 area de seguro agrícola,
 presidência, ver muito mais coisa
 financeiro com área meio, área técnica, 5 ou 6 áreas de subscrição, 1 área de sinistro e 1 área de risco (visão mais ), 1 área de resseguro e 1 área operacional
-geração de relatórios no BI é mais urgente, 
+geração de relatórios no BI é mais urgente
+
+
+ATA ORGANIZADA:

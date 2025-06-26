@@ -29,3 +29,6 @@ Previsão de Absenteísmo e Previsão de Presenteísmo
 
 - Qual a noção de sucesso desse projeto?
 Ter essas previsões e comparar com o resultado real. Dessa forma vamos entender se a ferramenta está prevendo de forma correta e tomar ações preventivas para mitigar a ausência do funcionário no dia seguinte.
+
+
+ATA ORGANIZADA:
