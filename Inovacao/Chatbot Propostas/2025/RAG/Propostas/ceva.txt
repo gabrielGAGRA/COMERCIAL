@@ -1,4 +1,4 @@
-ATAS:
+ATA ORGANIZADA:
 
 
 PROPOSTA:
@@ -47,21 +47,17 @@ Etapa 7 - Documentação e entrega
 7.3. Construção de um relatório com os principais insights;
 7.4. Apresentação final do projeto.
 
-
 Entregas:
 - Jupyter Notebook da análise descritiva, diagnóstica, preditiva prescritiva das informações disponibilizadas e extraídas
 - Documentação final de execução de projeto, incluindo variáveis externas a serem extraídas e seus métodos
 - Modelo de previsão de absenteísmo, capaz de indicar probabilidade de um colaborador faltar no dia subsequente, permitindo melhor planejamento e eficiência.
 - Reports semanais a respeito do andamento do projeto
 
-
-Return Over Investment:
+Return On Investment:
 - 205 funcionários
 - Salário médio de R$5.049 na cidade de São Paulo
 - Preço médio de 183% por funcionário
 - Supondo um absenteísmo de 2% por dia
-
 Perdas por mês: R$37.882,65
-
 Redução de 1% reduziria custos em R$18.757,50 mensalmente
 Payback do projeto em menos de 3 meses de uso

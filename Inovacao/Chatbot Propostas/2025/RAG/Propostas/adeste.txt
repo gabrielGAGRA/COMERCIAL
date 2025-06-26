@@ -1,7 +1,4 @@
-MODELO DSAAS
-
-ATAS:
-
+ATA ORGANIZADA:
 
 PROPOSTA DSAAS:
 Desafios a serem superados:

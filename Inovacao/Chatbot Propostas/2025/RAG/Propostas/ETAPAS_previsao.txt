@@ -15,11 +15,11 @@ Etapa 3 - Determinação de métricas e estudo estatístico
 Etapa 4 - Seleção de variáveis e construção do modelo
 4.1. Seleção e remoção de features desnecessárias para o modelo;
 4.2. Tratamentos necessários como encoding, normalização e demais iterações;
-4.3. Construção do modelo de ...;
+4.3. Construção do modelo de previsão de ...;
 Etapa 5 - Teste de modelos e tuning de algoritmos
 5.1. Testar quais tipos de alterações e transformações impactam mais os algoritmos segundo as métricas de sucesso elencadas;
 5.2. Comparação de desempenho dos modelos elaborados;
 5.3. Compreender e ajustar os hiperparâmetros para obter as melhores métricas de sucesso e comportamento desejado pelo algoritmo;
 5.4. Documentar a análise obtida e repassar para a equipe da (EMPRESA);
-Etapa 6 - Processo iterativo. Melhoria da classificação e previsão de tempo de manutenção;
+Etapa 6 - Processo iterativo. Melhoria da classificação e previsão de ...;
 Etapa 7 - Testes, validação e documentação

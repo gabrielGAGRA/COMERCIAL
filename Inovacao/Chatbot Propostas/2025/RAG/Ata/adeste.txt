@@ -1,6 +1,7 @@
 MODELO DSAAS
 
 ATAS:
+DSAAS
 Rodrigo Martins -> 8 anos de Adeste -> tecnologia da informação na UNESP -> trazer tecnologia a favor do negócio
 
 Adeste -> processo de transformação digital -> não tem uma baita estrutura de dados -> 8 fábricas no Brasil -> remédio, ingredientes p/ indústrias de alimentos, ração de cachorro
