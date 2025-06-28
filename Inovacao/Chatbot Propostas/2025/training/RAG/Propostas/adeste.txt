@@ -1,5 +1,3 @@
-ATA ORGANIZADA:
-
 PROPOSTA DSAAS:
 Desafios a serem superados:
 1. Falta de uma arquitetura de dados bem definida e consolidada, dificultando o uso estratégico das informações nas oito fábricas e nos segmentos de medicamentos, ingredientes alimentícios e ração animal.

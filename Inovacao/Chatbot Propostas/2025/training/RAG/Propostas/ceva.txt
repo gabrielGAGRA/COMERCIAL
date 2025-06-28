@@ -1,6 +1,3 @@
-ATA ORGANIZADA:
-
-
 PROPOSTA:
 Diagnóstico:
 1. A (EMPRESA) busca estruturar um modelo preditivo de absenteísmo para aumentar a previsibilidade nas operações e reduzir impactos financeiros causados por faltas inesperadas.

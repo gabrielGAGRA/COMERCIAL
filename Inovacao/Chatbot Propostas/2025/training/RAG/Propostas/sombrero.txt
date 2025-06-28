@@ -1,0 +1,34 @@
+PROPOSTA:
+Diagnóstico:
+1. A Sombrero Seguros busca otimizar suas análises de sinistros, apólices, laudos, peritos e produtores rurais associados, visando um fluxo de dados automatizado e visuais interativos que auxiliem na identificação de padrões e na tomada de decisão diária.
+1.1. A Sombrero Seguros enfrenta dificuldades na análise financeira, técnica e de incidentes de parceiros devido à limitação do BI atual, que é muito raso para a quantidade de informação gerada pela empresa e pouco interativo. A falta de visualizações estruturadas para cada área, separadas por filtros e detalhadas, impede comparações eficientes, afetando a otimização de custos e a tomada de decisões estratégicas.
+1.2. Sendo uma seguradora 100% digital, a limitação na geração dos relatórios significa também uma subutilização da riqueza de ativos gerados na área de dados, dificultando análises e tomando tempo diário dos colaboradores, que buscam acesso às informações em mais de 7 diferentes áreas.
+1.3. Dessa forma, a falta de insights estruturados de clientes também reduz a eficiência comercial e financeira, comprometendo o entendimento de riscos e custos e a checagem de sinistros. Além disso, a baixa usabilidade e dificuldade de centralização das informações podem gerar retrabalho e obstáculos em visões macro atualizadas da presidência.
+
+Objetivos do projeto:
+1. Gerar insights sobre tendências e fundamentar a tomada de decisões
+1.1. Desenvolver uma solução de BI mais flexível e interativa, permitindo que as equipes de 7 diferentes áreas visualizem e explorem dados de forma mais eficiente, identificando tendências e outliers de forma atualizada.
+2. Aprimorar a usabilidade e integração dos dados
+2.1. Implementar uma ferramenta intuitiva e acessível, que garanta uma extração de dados limpa e automatizada do ERP I4Pro. Isso permitirá maior confiabilidade nas informações e análises mais robustas conectadas, reduzindo retrabalho e aumentando a eficiência operacional e a checagem de informações de terceiros.
+
+Etapas do Projeto:
+Etapa 1 - Imersão no contexto
+Etapa 2 - Extração e Tratamento dos Dados
+2.1. Elaboração da estrutura dos dados a serem extraídos do I4Pro e de outros sistemas menores da empresa (com as respectivas APIs);
+2.2. Desenvolvimento de um script de extração do ERP da I4Pro;
+2.3. Tratamento e Processamento inicial dos dados extraídos do I4Pro;
+2.4. Limpeza e Análise inicial dos dados;
+Etapa 3 - Confecção da Dashboard
+3.1. Conectar a base de dados de forma automatizada e atualizada recorrentemente com o Power BI;
+3.2. Montar o dashboard, com foco na análise das informações do I4Pro, sistema que representa o coração de dados da empresa, tendo cerca de:
+  - 10 páginas (1 análise macro das métricas principais, voltada ao entendimento da presidência, 1 página para a área técnica, 5 páginas para áreas de subscrição, 1 página para sinistros, 1 para a área de resseguros e 1 página operacional);
+3.3. Trazer foco em visualizações integradas e interativas.
+Etapa 4 - Validação e Documentação Final
+4.1. Reports semanais com as entregas parciais do projeto;
+4.2. Extração dos dados, limpeza e análise exploratória, e integração com a Dashboard interativa, englobando a visão geral e detalhada da empresa;
+4.3. Documentação final extensiva para consulta e possíveis adições futuras, registro da análise exploratória.
+
+Entregas:
+- Reports semanais com as entregas parciais do projeto.
+- Extração dos dados, limpeza e análise exploratória, e integração com a Dashboard interativa, englobando a visão geral e detalhada da empresa.
+- Documentação final extensiva para consulta e possíveis adições futuras, registro da análise exploratória.
