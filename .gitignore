@@ -1,0 +1,28 @@
+# Ignorar tudo
+*
+
+# Excluir da ignorância em qualquer diretório
+!.gitignore
+!*.py
+!*.ipynb
+!*.txt
+!*.json
+!*.png
+!*.css
+!*.html
+!*.ico
+!*.webmanifest
+!*.js
+
+# Ignorar config.json especificamente
+/config.json
+
+/.env
+/.venv
+
+# Garantir que subpastas não sejam ignoradas
+!*/
+
+# Ignorar qualquer pasta chamada .venv
+.venv/
+.env
