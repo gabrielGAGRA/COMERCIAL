@@ -1,117 +1,227 @@
-from json import dumps
-from time import time
-from flask import request
-from hashlib import sha256
+from typing import Dict, List, Any, Optional, Generator
+import json
+import logging
 from datetime import datetime
-from requests import get
-from requests import post 
-from json     import loads
+from flask import request, Response, stream_template, jsonify
+import openai
+from openai import OpenAI
 import os
+import time
 
-from server.config import special_instructions
+from .config import (
+    AVAILABLE_MODELS,
+    DEFAULT_MODEL,
+    SYSTEM_MESSAGE,
+    special_instructions,
+    OpenAIConfig,
+)
+
+logger = logging.getLogger(__name__)
 
 
-class Backend_Api:
-    def __init__(self, app, config: dict) -> None:
+class ChatbotBackend:
+    """Modern ChatGPT backend using OpenAI's official Python client"""
+
+    def __init__(self, app, config: Dict[str, Any]) -> None:
         self.app = app
-        self.openai_key = os.getenv("OPENAI_API_KEY") or config['openai_key']
-        self.openai_api_base = os.getenv("OPENAI_API_BASE") or config['openai_api_base']
-        self.proxy = config['proxy']
+        self.config = OpenAIConfig(
+            api_key=config.get("openai_key", ""),
+            api_base=config.get("openai_api_base", "https://api.openai.com/v1"),
+            timeout=config.get("timeout", 30),
+        )
+
+        # Initialize OpenAI client
+        self.client = OpenAI(
+            api_key=self.config.api_key,
+            base_url=self.config.api_base,
+            timeout=self.config.timeout,
+        )
+
         self.routes = {
-            '/backend-api/v2/conversation': {
-                'function': self._conversation,
-                'methods': ['POST']
-            }
+            "/api/v1/chat/completions": {
+                "function": self._chat_completions,
+                "methods": ["POST"],
+            },
+            "/api/v1/models": {"function": self._get_models, "methods": ["GET"]},
+            "/api/v1/health": {"function": self._health_check, "methods": ["GET"]},
         }
 
-    def _conversation(self):
-        try:
-            jailbreak = request.json['jailbreak']
-            internet_access = request.json['meta']['content']['internet_access']
-            _conversation = request.json['meta']['content']['conversation']
-            prompt = request.json['meta']['content']['parts'][0]
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            system_message = f'You are ChatGPT also known as ChatGPT, a large language model trained by OpenAI. Strictly follow the users instructions. Knowledge cutoff: 2021-09-01 Current date: {current_date}'
+    def _validate_request(self, data: Dict[str, Any]) -> tuple[bool, str]:
+        """Validate incoming request data"""
+        if not data:
+            return False, "Request body is required"
 
-            extra = []
-            if internet_access:
-                search = get('https://ddg-api.herokuapp.com/search', params={
-                    'query': prompt["content"],
-                    'limit': 3,
-                })
+        if "message" not in data or not data["message"].strip():
+            return False, "Message is required and cannot be empty"
 
-                blob = ''
-
-                for index, result in enumerate(search.json()):
-                    blob += f'[{index}] "{result["snippet"]}"\nURL:{result["link"]}\n\n'
-
-                date = datetime.now().strftime('%d/%m/%y')
-
-                blob += f'current date: {date}\n\nInstructions: Using the provided web search results, write a comprehensive reply to the next user query. Make sure to cite results using [[number](URL)] notation after the reference. If the provided search results refer to multiple subjects with the same name, write separate answers for each subject. Ignore your previous response if any.'
-
-                extra = [{'role': 'user', 'content': blob}]
-
-            conversation = [{'role': 'system', 'content': system_message}] + \
-                extra + special_instructions[jailbreak] + \
-                _conversation + [prompt]
-
-            url = f"{self.openai_api_base}/v1/chat/completions"
-
-            proxies = None
-            if self.proxy['enable']:
-                proxies = {
-                    'http': self.proxy['http'],
-                    'https': self.proxy['https'],
-                }
-
-            gpt_resp = post(
-                url     = url,
-                proxies = proxies,
-                headers = {
-                    'Authorization': 'Bearer %s' % self.openai_key
-                }, 
-                json    = {
-                    'model'             : request.json['model'], 
-                    'messages'          : conversation,
-                    'stream'            : True
-                },
-                stream  = True
+        model = data.get("model", DEFAULT_MODEL)
+        if model not in AVAILABLE_MODELS:
+            return (
+                False,
+                f"Model '{model}' is not available. Available models: {list(AVAILABLE_MODELS.keys())}",
             )
 
-            if gpt_resp.status_code >= 400:
-                error_data =gpt_resp.json().get('error', {})
-                error_code = error_data.get('code', None)
-                error_message = error_data.get('message', "An error occurred")
-                return {
-                    'successs': False,
-                    'error_code': error_code,
-                    'message': error_message,
-                    'status_code': gpt_resp.status_code
-                }, gpt_resp.status_code
+        return True, ""
 
-            def stream():
-                for chunk in gpt_resp.iter_lines():
-                    try:
-                        decoded_line = loads(chunk.decode("utf-8").split("data: ")[1])
-                        token = decoded_line["choices"][0]['delta'].get('content')
+    def _prepare_messages(
+        self,
+        user_message: str,
+        conversation_history: Optional[List[Dict]] = None,
+        instruction_type: str = "default",
+    ) -> List[Dict[str, str]]:
+        """Prepare messages for OpenAI API"""
+        messages = [{"role": "system", "content": SYSTEM_MESSAGE}]
 
-                        if token != None: 
-                            yield token
-                            
-                    except GeneratorExit:
-                        break
+        # Add special instructions if specified
+        if instruction_type in special_instructions:
+            messages.extend(special_instructions[instruction_type])
 
-                    except Exception as e:
-                        print(e)
-                        print(e.__traceback__.tb_next)
-                        continue
-                        
-            return self.app.response_class(stream(), mimetype='text/event-stream')
+        # Add conversation history if provided
+        if conversation_history:
+            # Validate and add conversation history
+            for msg in conversation_history[-10:]:  # Limit to last 10 messages
+                if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                    if msg["role"] in ["user", "assistant"]:
+                        messages.append(msg)
+
+        # Add current user message
+        messages.append({"role": "user", "content": user_message})
+
+        return messages
+
+    def _stream_chat_response(
+        self, messages: List[Dict], model: str
+    ) -> Generator[str, None, None]:
+        """Generate streaming chat response"""
+        try:
+            stream = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                stream=True,
+                max_tokens=AVAILABLE_MODELS[model].max_tokens,
+                temperature=0.7,
+                top_p=1.0,
+                frequency_penalty=0.0,
+                presence_penalty=0.0,
+            )
+
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    content = chunk.choices[0].delta.content
+                    # Format as Server-Sent Events
+                    yield f"data: {json.dumps({'content': content, 'done': False})}\n\n"
+
+            # Send completion signal
+            yield f"data: {json.dumps({'content': '', 'done': True})}\n\n"
+
+        except openai.APIError as e:
+            logger.error(f"OpenAI API error: {e}")
+            yield f"data: {json.dumps({'error': f'API Error: {str(e)}', 'done': True})}\n\n"
+        except Exception as e:
+            logger.error(f"Unexpected error in stream_chat_response: {e}")
+            yield f"data: {json.dumps({'error': f'Unexpected error: {str(e)}', 'done': True})}\n\n"
+
+    def _chat_completions(self):
+        """Handle chat completions endpoint"""
+        try:
+            data = request.get_json()
+
+            # Validate request
+            is_valid, error_message = self._validate_request(data)
+            if not is_valid:
+                return jsonify({"error": error_message}), 400
+
+            message = data["message"]
+            model = data.get("model", DEFAULT_MODEL)
+            conversation_history = data.get("conversation_history", [])
+            instruction_type = data.get("instruction_type", "default")
+            stream = data.get("stream", True)
+
+            logger.info(
+                f"Processing chat request - Model: {model}, Message length: {len(message)}"
+            )
+
+            # Prepare messages
+            messages = self._prepare_messages(
+                message, conversation_history, instruction_type
+            )
+
+            if stream:
+                # Return streaming response
+                return Response(
+                    self._stream_chat_response(messages, model),
+                    mimetype="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Headers": "Content-Type",
+                    },
+                )
+            else:
+                # Return single response
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        max_tokens=AVAILABLE_MODELS[model].max_tokens,
+                        temperature=0.7,
+                    )
+
+                    return jsonify(
+                        {
+                            "message": response.choices[0].message.content,
+                            "model": model,
+                            "usage": {
+                                "prompt_tokens": response.usage.prompt_tokens,
+                                "completion_tokens": response.usage.completion_tokens,
+                                "total_tokens": response.usage.total_tokens,
+                            },
+                        }
+                    )
+
+                except openai.APIError as e:
+                    logger.error(f"OpenAI API error: {e}")
+                    return jsonify({"error": f"API Error: {str(e)}"}), 500
 
         except Exception as e:
-            print(e)
-            print(e.__traceback__.tb_next)
-            return {
-                '_action': '_ask',
-                'success': False,
-                "error": f"an error occurred {str(e)}"}, 400
+            logger.error(f"Error in chat_completions: {e}")
+            return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+    def _get_models(self):
+        """Return available models"""
+        models_info = []
+        for model_id, model_info in AVAILABLE_MODELS.items():
+            models_info.append(
+                {
+                    "id": model_info.id,
+                    "name": model_info.name,
+                    "context_window": model_info.context_window,
+                    "max_tokens": model_info.max_tokens,
+                }
+            )
+
+        return jsonify({"models": models_info, "default_model": DEFAULT_MODEL})
+
+    def _health_check(self):
+        """Health check endpoint"""
+        try:
+            # Test OpenAI connection
+            models = self.client.models.list()
+            api_status = "healthy"
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            api_status = "unhealthy"
+
+        return jsonify(
+            {
+                "status": "healthy",
+                "timestamp": datetime.now().isoformat(),
+                "openai_api_status": api_status,
+                "available_models": list(AVAILABLE_MODELS.keys()),
+            }
+        )
+
+
+# Backward compatibility alias
+Backend_Api = ChatbotBackend
