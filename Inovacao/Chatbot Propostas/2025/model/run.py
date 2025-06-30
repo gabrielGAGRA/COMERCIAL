@@ -9,6 +9,7 @@ import sys
 import logging
 from pathlib import Path
 from typing import Dict, Any
+from dotenv import load_dotenv
 
 # Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -29,30 +30,20 @@ logger = logging.getLogger(__name__)
 
 
 def load_config() -> Dict[str, Any]:
-    """Load configuration from file and environment variables"""
-    config_file = Path("config.json")
-
-    if config_file.exists():
-        import json
-
-        try:
-            with open(config_file, "r") as f:
-                config = json.load(f)
-            logger.info("Configuration loaded from config.json")
-            return config
-        except (json.JSONDecodeError, FileNotFoundError) as e:
-            logger.warning(f"Failed to load config.json: {e}")
-
-    # Default configuration
-    default_config = {
-        "site_config": {"host": "127.0.0.1", "port": 1338, "debug": False},
+    """Load configuration from environment variables"""
+    config = {
+        "site_config": {
+            "host": os.getenv("HOST", "127.0.0.1"),
+            "port": int(os.getenv("PORT", "1338")),
+            "debug": os.getenv("DEBUG", "false").lower() == "true",
+        },
         "openai_key": os.getenv("OPENAI_API_KEY", ""),
         "openai_api_base": os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
-        "timeout": 30,
+        "timeout": int(os.getenv("TIMEOUT", "30")),
     }
 
-    logger.info("Using default configuration")
-    return default_config
+    logger.info("Configuration loaded from environment variables")
+    return config
 
 
 def validate_config(config: Dict[str, Any]) -> bool:
@@ -98,6 +89,7 @@ def main():
         config = load_config()
 
         if not validate_config(config):
+            logger.error("Please check your .env file and ensure OPENAI_API_KEY is set")
             sys.exit(1)
 
         # Setup routes
@@ -110,16 +102,18 @@ def main():
         debug = site_config.get("debug", False)
 
         # Print startup information
-        logger.info(f"Starting ChatGPT Interface Server")
-        logger.info(f"Server: http://{host}:{port}")
-        logger.info(f"Debug mode: {debug}")
+        logger.info("=" * 60)
+        logger.info("🤖 ChatGPT Interface Server Starting")
+        logger.info("=" * 60)
+        logger.info(f"🌐 Server URL: http://{host}:{port}")
+        logger.info(f"🔧 Debug mode: {debug}")
+        logger.info(
+            f"⚡ OpenAI API: {'✅ Configured' if config.get('openai_key') else '❌ Missing'}"
+        )
+        logger.info("=" * 60)
 
-        if config.get("openai_key"):
-            logger.info("OpenAI API key configured")
-        else:
-            logger.warning(
-                "OpenAI API key not configured - server will not work properly"
-            )
+        if not config.get("openai_key"):
+            logger.warning("⚠️  Server will not work without OpenAI API key!")
 
         # Start the server
         app.run(host=host, port=port, debug=debug, threaded=True)

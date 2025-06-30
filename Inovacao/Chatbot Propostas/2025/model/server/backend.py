@@ -2,7 +2,7 @@ from typing import Dict, List, Any, Optional, Generator
 import json
 import logging
 from datetime import datetime
-from flask import request, Response, stream_template, jsonify
+from flask import request, Response, jsonify
 import openai
 from openai import OpenAI
 import os
@@ -11,8 +11,6 @@ import time
 from .config import (
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
-    SYSTEM_MESSAGE,
-    special_instructions,
     OpenAIConfig,
     AVAILABLE_ASSISTANTS,
     DEFAULT_ASSISTANT,
@@ -23,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChatbotBackend:
-    """Modern ChatGPT backend using OpenAI's official Python client"""
+    """Modern ChatGPT backend using OpenAI Assistants API"""
 
     def __init__(self, app, config: Dict[str, Any]) -> None:
         self.app = app
@@ -41,10 +39,6 @@ class ChatbotBackend:
         )
 
         self.routes = {
-            "/api/v1/chat/completions": {
-                "function": self._chat_completions,
-                "methods": ["POST"],
-            },
             "/api/v1/assistant/chat": {
                 "function": self._assistant_chat,
                 "methods": ["POST"],
@@ -57,147 +51,22 @@ class ChatbotBackend:
             "/api/v1/health": {"function": self._health_check, "methods": ["GET"]},
         }
 
-    def _validate_request(self, data: Dict[str, Any]) -> tuple[bool, str]:
-        """Validate incoming request data"""
+    def _validate_assistant_request(self, data: Dict[str, Any]) -> tuple[bool, str]:
+        """Validate incoming assistant request data"""
         if not data:
             return False, "Request body is required"
 
         if "message" not in data or not data["message"].strip():
             return False, "Message is required and cannot be empty"
 
-        model = data.get("model", DEFAULT_MODEL)
-        if model not in AVAILABLE_MODELS:
+        assistant_key = data.get("assistant", DEFAULT_ASSISTANT)
+        if assistant_key not in AVAILABLE_ASSISTANTS:
             return (
                 False,
-                f"Model '{model}' is not available. Available models: {list(AVAILABLE_MODELS.keys())}",
+                f'Assistant "{assistant_key}" not available. Available assistants: {list(AVAILABLE_ASSISTANTS.keys())}',
             )
 
         return True, ""
-
-    def _prepare_messages(
-        self,
-        user_message: str,
-        conversation_history: Optional[List[Dict]] = None,
-        instruction_type: str = "default",
-    ) -> List[Dict[str, str]]:
-        """Prepare messages for OpenAI API"""
-        messages = [{"role": "system", "content": SYSTEM_MESSAGE}]
-
-        # Add special instructions if specified
-        if instruction_type in special_instructions:
-            messages.extend(special_instructions[instruction_type])
-
-        # Add conversation history if provided
-        if conversation_history:
-            # Validate and add conversation history
-            for msg in conversation_history[-10:]:  # Limit to last 10 messages
-                if isinstance(msg, dict) and "role" in msg and "content" in msg:
-                    if msg["role"] in ["user", "assistant"]:
-                        messages.append(msg)
-
-        # Add current user message
-        messages.append({"role": "user", "content": user_message})
-
-        return messages
-
-    def _stream_chat_response(
-        self, messages: List[Dict], model: str
-    ) -> Generator[str, None, None]:
-        """Generate streaming chat response"""
-        try:
-            stream = self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                stream=True,
-                max_tokens=AVAILABLE_MODELS[model].max_tokens,
-                temperature=0.7,
-                top_p=1.0,
-                frequency_penalty=0.0,
-                presence_penalty=0.0,
-            )
-
-            for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
-                    content = chunk.choices[0].delta.content
-                    # Format as Server-Sent Events
-                    yield f"data: {json.dumps({'content': content, 'done': False})}\n\n"
-
-            # Send completion signal
-            yield f"data: {json.dumps({'content': '', 'done': True})}\n\n"
-
-        except openai.APIError as e:
-            logger.error(f"OpenAI API error: {e}")
-            yield f"data: {json.dumps({'error': f'API Error: {str(e)}', 'done': True})}\n\n"
-        except Exception as e:
-            logger.error(f"Unexpected error in stream_chat_response: {e}")
-            yield f"data: {json.dumps({'error': f'Unexpected error: {str(e)}', 'done': True})}\n\n"
-
-    def _chat_completions(self):
-        """Handle chat completions endpoint"""
-        try:
-            data = request.get_json()
-
-            # Validate request
-            is_valid, error_message = self._validate_request(data)
-            if not is_valid:
-                return jsonify({"error": error_message}), 400
-
-            message = data["message"]
-            model = data.get("model", DEFAULT_MODEL)
-            conversation_history = data.get("conversation_history", [])
-            instruction_type = data.get("instruction_type", "default")
-            stream = data.get("stream", True)
-
-            logger.info(
-                f"Processing chat request - Model: {model}, Message length: {len(message)}"
-            )
-
-            # Prepare messages
-            messages = self._prepare_messages(
-                message, conversation_history, instruction_type
-            )
-
-            if stream:
-                # Return streaming response
-                return Response(
-                    self._stream_chat_response(messages, model),
-                    mimetype="text/event-stream",
-                    headers={
-                        "Cache-Control": "no-cache",
-                        "Connection": "keep-alive",
-                        "Access-Control-Allow-Origin": "*",
-                        "Access-Control-Allow-Headers": "Content-Type",
-                    },
-                )
-            else:
-                # Return single response
-                try:
-                    response = self.client.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        max_tokens=AVAILABLE_MODELS[model].max_tokens,
-                        temperature=0.7,
-                    )
-
-                    return jsonify(
-                        {
-                            "message": response.choices[0].message.content,
-                            "model": model,
-                            "usage": {
-                                "prompt_tokens": response.usage.prompt_tokens,
-                                "completion_tokens": response.usage.completion_tokens,
-                                "total_tokens": response.usage.total_tokens,
-                            },
-                        }
-                    )
-
-                except openai.APIError as e:
-                    logger.error(f"OpenAI API error: {e}")
-                    return jsonify({"error": f"API Error: {str(e)}"}), 500
-
-        except Exception as e:
-            logger.error(f"Error in chat_completions: {e}")
-            return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
     def _get_models(self):
         """Return available models"""
@@ -237,30 +106,14 @@ class ChatbotBackend:
             data = request.get_json()
 
             # Validate request
-            if not data:
-                return jsonify({"error": "Request body is required"}), 400
-
-            if "message" not in data or not data["message"].strip():
-                return (
-                    jsonify({"error": "Message is required and cannot be empty"}),
-                    400,
-                )
+            is_valid, error_message = self._validate_assistant_request(data)
+            if not is_valid:
+                return jsonify({"error": error_message}), 400
 
             message = data["message"]
             assistant_key = data.get("assistant", DEFAULT_ASSISTANT)
             conversation_history = data.get("conversation_history", [])
             thread_id = data.get("thread_id", None)
-
-            # Validate assistant
-            if assistant_key not in AVAILABLE_ASSISTANTS:
-                return (
-                    jsonify(
-                        {
-                            "error": f'Assistant "{assistant_key}" not available. Available assistants: {list(AVAILABLE_ASSISTANTS.keys())}'
-                        }
-                    ),
-                    400,
-                )
 
             assistant_config = AVAILABLE_ASSISTANTS[assistant_key]
 
@@ -273,38 +126,42 @@ class ChatbotBackend:
                 if not thread_id:
                     thread = self.client.beta.threads.create()
                     thread_id = thread.id
+                    logger.info(f"Created new thread: {thread_id}")
 
                     # Add conversation history to thread if provided
                     if conversation_history:
+                        logger.info(
+                            f"Adding {len(conversation_history)} messages to thread history"
+                        )
                         for msg in conversation_history[-10:]:  # Last 10 messages
                             if (
                                 isinstance(msg, dict)
                                 and "role" in msg
                                 and "content" in msg
+                                and msg["role"] in ["user", "assistant"]
                             ):
-                                if msg["role"] in ["user", "assistant"]:
-                                    role = (
-                                        "user" if msg["role"] == "user" else "assistant"
-                                    )
-                                    self.client.beta.threads.messages.create(
-                                        thread_id=thread_id,
-                                        role=role,
-                                        content=msg["content"],
-                                    )
+                                self.client.beta.threads.messages.create(
+                                    thread_id=thread_id,
+                                    role=msg["role"],
+                                    content=msg["content"],
+                                )
+                else:
+                    logger.info(f"Using existing thread: {thread_id}")
 
-                # Add user message to thread
+                # Add current user message to thread
                 self.client.beta.threads.messages.create(
                     thread_id=thread_id, role="user", content=message
                 )
 
-                # Create and run assistant
+                # Create and run assistant (without additional instructions)
                 run = self.client.beta.threads.runs.create(
                     thread_id=thread_id,
                     assistant_id=assistant_config.id,
-                    instructions=assistant_config.instructions,
                 )
 
-                # Wait for completion and stream response
+                logger.info(f"Started assistant run: {run.id}")
+
+                # Stream response
                 return Response(
                     self._stream_assistant_response(thread_id, run.id),
                     mimetype="text/event-stream",
@@ -329,19 +186,30 @@ class ChatbotBackend:
     ) -> Generator[str, None, None]:
         """Stream assistant response"""
         try:
+            max_polling_time = 300  # 5 minutes max
+            polling_start = time.time()
+
             # Poll for run completion
             while True:
+                # Check timeout
+                if time.time() - polling_start > max_polling_time:
+                    logger.error(f"Assistant run {run_id} timed out")
+                    yield f"data: {json.dumps({'error': 'Assistant response timed out', 'done': True})}\n\n"
+                    break
+
                 run = self.client.beta.threads.runs.retrieve(
                     thread_id=thread_id, run_id=run_id
                 )
 
+                logger.debug(f"Run status: {run.status}")
+
                 if run.status == "completed":
-                    # Get the latest message
+                    # Get the latest assistant message
                     messages = self.client.beta.threads.messages.list(
                         thread_id=thread_id, order="desc", limit=1
                     )
 
-                    if messages.data:
+                    if messages.data and messages.data[0].role == "assistant":
                         message = messages.data[0]
                         if message.content and message.content[0].type == "text":
                             content = message.content[0].text.value
@@ -352,22 +220,35 @@ class ChatbotBackend:
                                 if i > 0:
                                     word = " " + word
                                 yield f"data: {json.dumps({'content': word, 'done': False, 'thread_id': thread_id})}\n\n"
-                                time.sleep(0.05)  # Small delay for streaming effect
+                                time.sleep(0.03)  # Small delay for streaming effect
 
                     # Send completion signal
                     yield f"data: {json.dumps({'content': '', 'done': True, 'thread_id': thread_id})}\n\n"
+                    logger.info(f"Assistant run {run_id} completed successfully")
                     break
 
                 elif run.status == "failed":
-                    yield f"data: {json.dumps({'error': 'Assistant run failed', 'done': True})}\n\n"
+                    error_msg = f"Assistant run failed: {run.last_error.message if run.last_error else 'Unknown error'}"
+                    logger.error(error_msg)
+                    yield f"data: {json.dumps({'error': error_msg, 'done': True})}\n\n"
                     break
 
                 elif run.status in ["cancelled", "expired"]:
-                    yield f"data: {json.dumps({'error': f'Assistant run {run.status}', 'done': True})}\n\n"
+                    error_msg = f"Assistant run {run.status}"
+                    logger.warning(error_msg)
+                    yield f"data: {json.dumps({'error': error_msg, 'done': True})}\n\n"
+                    break
+
+                elif run.status == "requires_action":
+                    # Handle function calls if needed in the future
+                    logger.warning(
+                        "Assistant requires action - function calls not implemented"
+                    )
+                    yield f"data: {json.dumps({'error': 'Assistant requires action (not supported)', 'done': True})}\n\n"
                     break
 
                 else:
-                    # Still running, wait a bit
+                    # Still running (queued, in_progress), wait a bit
                     time.sleep(1)
 
         except Exception as e:
@@ -377,8 +258,8 @@ class ChatbotBackend:
     def _health_check(self):
         """Health check endpoint"""
         try:
-            # Test OpenAI connection
-            models = self.client.models.list()
+            # Test OpenAI connection by listing assistants
+            assistants = self.client.beta.assistants.list(limit=1)
             api_status = "healthy"
         except Exception as e:
             logger.error(f"Health check failed: {e}")
@@ -389,7 +270,8 @@ class ChatbotBackend:
                 "status": "healthy",
                 "timestamp": datetime.now().isoformat(),
                 "openai_api_status": api_status,
-                "available_models": list(AVAILABLE_MODELS.keys()),
+                "available_assistants": list(AVAILABLE_ASSISTANTS.keys()),
+                "default_assistant": DEFAULT_ASSISTANT,
             }
         )
 

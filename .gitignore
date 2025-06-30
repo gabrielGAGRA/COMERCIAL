@@ -1,8 +1,12 @@
 # Ignorar tudo
 *
 
+# Garantir que subpastas não sejam ignoradas
+!*/
+
 # Excluir da ignorância em qualquer diretório
 !.gitignore
+!*.md
 !*.py
 !*.ipynb
 !*.txt
@@ -14,15 +18,10 @@
 !*.webmanifest
 !*.js
 
-# Ignorar config.json especificamente
-/config.json
+!*.env.example
 
-/.env
-/.venv
-
-# Garantir que subpastas não sejam ignoradas
-!*/
-
-# Ignorar qualquer pasta chamada .venv
-.venv/
+# Ignorar especificamente
+config.json
 .env
+.venv
+__pycache__
