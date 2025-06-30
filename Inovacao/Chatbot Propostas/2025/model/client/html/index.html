@@ -105,7 +105,18 @@
             <footer class="sidebar-footer">
                 <div class="settings-panel">
                     <div class="setting-group">
-                        <label for="model-select">Model:</label>
+                        <label for="assistant-select">Assistente:</label>
+                        <select id="assistant-select" name="assistant">
+                            <option value="organizador_atas">Organizador de Atas</option>
+                            <option value="criador_propostas">Criador de Propostas</option>
+                        </select>
+                        <small id="assistant-info" class="assistant-description">
+                            Especialista em organizar e estruturar atas de reunião
+                        </small>
+                    </div>
+                    
+                    <div class="setting-group">
+                        <label for="model-select">Modelo:</label>
                         <select id="model" name="model">
                             <option value="gpt-4o" selected>GPT-4o</option>
                             <option value="gpt-4o-mini">GPT-4o Mini</option>
@@ -135,7 +146,10 @@
         <main class="main-content">
             <div class="chat-header">
                 <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
-                <h1>ChatGPT</h1>
+                <div class="chat-title">
+                    <h1>ChatGPT</h1>
+                    <span class="current-assistant" id="current-assistant-display">Organizador de Atas</span>
+                </div>
                 <div class="chat-controls">
                     <button class="stop_generating" id="stop-generating" style="display: none;">
                         <span>Stop</span>

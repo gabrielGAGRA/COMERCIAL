@@ -9,9 +9,13 @@ class ChatInterface {
         this.isGenerating = false;
         this.controller = null;
         this.conversationHistory = [];
+        this.currentThreadId = null;
+        this.availableAssistants = {};
+        this.currentAssistant = 'organizador_atas';
 
         this.initializeElements();
         this.setupEventListeners();
+        this.loadAssistants();
         this.loadSettings();
         this.loadConversationHistory();
 
@@ -24,7 +28,9 @@ class ChatInterface {
         this.sendButton = document.getElementById('send-button');
         this.stopButton = document.querySelector('.stop_generating');
         this.modelSelect = document.getElementById('model');
+        this.assistantSelect = document.getElementById('assistant-select');
         this.conversationsList = document.querySelector('.conversations-list');
+        this.newChatBtn = document.getElementById('new-chat-btn');
 
         // Initialize markdown renderer
         this.markdown = window.markdownit({
@@ -57,10 +63,40 @@ class ChatInterface {
         // Auto-resize textarea
         this.messageInput?.addEventListener('input', () => this.resizeTextarea());
 
+        // New chat button
+        this.newChatBtn?.addEventListener('click', () => this.startNewConversation());
+
         // Model selection change
         this.modelSelect?.addEventListener('change', (e) => {
             this.saveSettings();
             console.log(`Model changed to: ${e.target.value}`);
+        });
+
+        // Assistant selection change
+        this.assistantSelect?.addEventListener('change', (e) => {
+            const previousAssistant = this.currentAssistant;
+            this.currentAssistant = e.target.value;
+            this.currentThreadId = null; // Reset thread when changing assistant
+
+            // Show confirmation if there's an active conversation
+            if (this.conversationHistory.length > 0 && previousAssistant !== this.currentAssistant) {
+                const confirmChange = confirm(
+                    `Trocar para ${this.availableAssistants[this.currentAssistant]?.name || 'outro assistente'} iniciará uma nova conversa. Deseja continuar?`
+                );
+
+                if (confirmChange) {
+                    this.startNewConversation();
+                } else {
+                    // Revert selection
+                    this.currentAssistant = previousAssistant;
+                    this.assistantSelect.value = previousAssistant;
+                    return;
+                }
+            }
+
+            this.saveSettings();
+            this.updateAssistantInfo();
+            console.log(`Assistant changed to: ${e.target.value}`);
         });
 
         // Theme change
@@ -117,16 +153,17 @@ class ChatInterface {
         try {
             this.controller = new AbortController();
 
-            const response = await fetch('/api/v1/chat/completions', {
+            // Use assistant API instead of chat completions
+            const response = await fetch('/api/v1/assistant/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     message: message,
-                    model: this.getSelectedModel(),
+                    assistant: this.currentAssistant,
                     conversation_history: this.conversationHistory.slice(-10), // Last 10 messages
-                    stream: true
+                    thread_id: this.currentThreadId
                 }),
                 signal: this.controller.signal
             });
@@ -158,6 +195,10 @@ class ChatInterface {
                             if (data.content) {
                                 responseContent += data.content;
                                 this.updateMessageContent(assistantMessageId, responseContent);
+                            }
+
+                            if (data.thread_id && !this.currentThreadId) {
+                                this.currentThreadId = data.thread_id;
                             }
 
                             if (data.done) {
@@ -285,6 +326,7 @@ class ChatInterface {
     saveSettings() {
         const settings = {
             model: this.getSelectedModel(),
+            assistant: this.currentAssistant,
             theme: this.getCurrentTheme()
         };
         localStorage.setItem('chatgpt-settings', JSON.stringify(settings));
@@ -296,6 +338,14 @@ class ChatInterface {
 
             if (settings.model && this.modelSelect) {
                 this.modelSelect.value = settings.model;
+            }
+
+            if (settings.assistant) {
+                this.currentAssistant = settings.assistant;
+                if (this.assistantSelect) {
+                    this.assistantSelect.value = settings.assistant;
+                }
+                this.updateAssistantDisplay();
             }
 
             if (settings.theme) {
@@ -369,16 +419,79 @@ class ChatInterface {
     startNewConversation() {
         this.currentChatId = this.generateUUID();
         this.conversationHistory = [];
+        this.currentThreadId = null; // Reset thread ID
 
         // Clear message box
         if (this.messageBox) {
-            this.messageBox.innerHTML = '';
+            this.messageBox.innerHTML = `
+                <div class="welcome-message">
+                    <h2>Nova Conversa com ${this.availableAssistants[this.currentAssistant]?.name || 'Assistente'}</h2>
+                    <p>${this.availableAssistants[this.currentAssistant]?.description || 'Como posso ajudá-lo hoje?'}</p>
+                </div>
+            `;
         }
 
         // Update URL
         history.pushState({}, '', `/chat/${this.currentChatId}`);
 
         console.log('Started new conversation:', this.currentChatId);
+    }
+
+    // Load available assistants
+    async loadAssistants() {
+        try {
+            const response = await fetch('/api/v1/assistants');
+            if (response.ok) {
+                const data = await response.json();
+                this.availableAssistants = {};
+
+                data.assistants.forEach(assistant => {
+                    this.availableAssistants[assistant.id] = assistant;
+                });
+
+                this.currentAssistant = data.default_assistant;
+                this.populateAssistantSelect();
+                this.updateAssistantInfo();
+            }
+        } catch (error) {
+            console.error('Error loading assistants:', error);
+        }
+    }
+
+    populateAssistantSelect() {
+        if (!this.assistantSelect) return;
+
+        this.assistantSelect.innerHTML = '';
+
+        Object.entries(this.availableAssistants).forEach(([id, assistant]) => {
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = assistant.name;
+            option.title = assistant.description;
+            this.assistantSelect.appendChild(option);
+        });
+
+        this.assistantSelect.value = this.currentAssistant;
+    }
+
+    updateAssistantInfo() {
+        const assistantInfo = document.getElementById('assistant-info');
+        if (assistantInfo && this.availableAssistants[this.currentAssistant]) {
+            const assistant = this.availableAssistants[this.currentAssistant];
+            assistantInfo.textContent = assistant.description;
+        }
+        this.updateAssistantDisplay();
+    }
+
+    updateAssistantDisplay() {
+        const assistantDisplay = document.getElementById('current-assistant-display');
+        if (assistantDisplay && this.availableAssistants[this.currentAssistant]) {
+            const assistant = this.availableAssistants[this.currentAssistant];
+            assistantDisplay.textContent = assistant.name;
+
+            // Add visual indicator
+            assistantDisplay.className = `current-assistant ${this.currentAssistant}`;
+        }
     }
 }
 
