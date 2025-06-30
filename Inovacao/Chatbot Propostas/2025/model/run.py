@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Modern ChatGPT Interface Application
-Improved version with modern dependencies and better architecture
-"""
-
 import os
 import sys
 import logging
