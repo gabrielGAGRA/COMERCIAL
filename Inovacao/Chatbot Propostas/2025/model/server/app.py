@@ -1,6 +1,7 @@
 from flask import Flask, request
 from flask_cors import CORS
 import logging
+import os
 from datetime import datetime
 
 # Configure logging
@@ -13,7 +14,11 @@ logger = logging.getLogger(__name__)
 
 def create_app():
     """Application factory pattern for Flask app"""
-    app = Flask(__name__, template_folder="./../client/html")
+    # Get absolute path to template folder
+    current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    template_folder = os.path.join(current_dir, "client", "html")
+    
+    app = Flask(__name__, template_folder=template_folder)
 
     # Enable CORS for all routes
     CORS(app, origins=["*"])

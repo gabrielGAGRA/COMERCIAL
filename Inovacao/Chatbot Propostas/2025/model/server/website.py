@@ -59,7 +59,9 @@ class Website:
     def _serve_assets(self, folder: str, file: str):
         """Serve static assets with proper error handling"""
         try:
-            asset_path = f"./../client/{folder}/{file}"
+            # Get the correct path relative to the project root
+            current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            asset_path = os.path.join(current_dir, "client", folder, file)
 
             # Security check - prevent directory traversal
             if ".." in folder or ".." in file:
