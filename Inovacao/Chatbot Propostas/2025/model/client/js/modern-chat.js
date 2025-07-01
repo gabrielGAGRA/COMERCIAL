@@ -19,6 +19,9 @@ class ChatInterface {
         this.loadSettings();
         this.loadConversationHistory();
 
+        // Initialize theme on startup
+        this.initializeTheme();
+
         console.log('ChatGPT Interface initialized');
     }
 
@@ -348,9 +351,9 @@ class ChatInterface {
                 this.updateAssistantDisplay();
             }
 
-            if (settings.theme) {
-                this.setTheme(settings.theme);
-            }
+            // Load theme from localStorage
+            const savedTheme = localStorage.getItem('theme') || settings.theme || 'light';
+            this.setTheme(savedTheme);
         } catch (error) {
             console.error('Error loading settings:', error);
         }
@@ -365,8 +368,11 @@ class ChatInterface {
         const themeInput = document.querySelector(`input[name="theme"][value="${theme}"]`);
         if (themeInput) {
             themeInput.checked = true;
-            document.documentElement.className = theme;
+            document.documentElement.setAttribute('data-theme', theme);
             localStorage.setItem('theme', theme);
+
+            // Update theme visually for immediate feedback
+            document.body.className = theme === 'dark' ? 'dark-theme' : 'light-theme';
         }
     }
 
