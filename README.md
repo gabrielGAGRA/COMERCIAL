@@ -1,1 +1,1 @@
-Comercial de dados da Poli Junior
+Comercial do núcleo de Análise e Inteligência de Dados da Poli Júnior
