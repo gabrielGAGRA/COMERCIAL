@@ -1,6 +1,4 @@
-MODELO DSAAS
-
-ATAS:
+    ATAS:
 DSAAS
 Rodrigo Martins -> 8 anos de Adeste -> tecnologia da informação na UNESP -> trazer tecnologia a favor do negócio
 

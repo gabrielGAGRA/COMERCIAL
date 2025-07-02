@@ -1,16 +1,15 @@
 import streamlit as st
-import requests
+import openai
+from openai import OpenAI
 import json
 import time
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional
-import openai
-from openai import OpenAI
+from typing import Dict, List, Any, Optional
 import base64
 import os
 
-# Page configuration
+# Configuração da página
 st.set_page_config(
     page_title="ChatGPT Interface",
     page_icon="🤖",
@@ -18,11 +17,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# CSS for styling
+# CSS customizado para replicar o visual original
 st.markdown(
     """
 <style>
-/* Modern ChatGPT Interface Styles */
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Root variables */
 :root {
     --primary-color: #007acc;
     --primary-hover: #005999;
@@ -36,561 +38,803 @@ st.markdown(
     --success-color: #22c55e;
     --error-color: #ef4444;
     --warning-color: #f59e0b;
+    --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    --border-radius: 8px;
+    --border-radius-sm: 4px;
+    --border-radius-lg: 12px;
 }
 
+/* Dark theme */
+[data-theme="dark"] {
+    --primary-color: #4a9eff;
+    --primary-hover: #3b82f6;
+    --secondary-color: #2d2d2d;
+    --background-color: #1a1a1a;
+    --surface-color: #242424;
+    --text-color: #e0e0e0;
+    --text-secondary: #a0a0a0;
+    --border-color: #404040;
+    --shadow-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Override Streamlit default styles */
 .stApp {
-    background-color: var(--background-color);
+    font-family: var(--font-family) !important;
 }
 
-/* Main chat container */
-.chat-container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 1rem;
+/* Main container */
+.main .block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    max-width: none;
 }
 
-/* Message styling */
-.user-message {
-    background-color: #f0f0f0;
-    padding: 12px 16px;
-    border-radius: 12px;
-    margin: 8px 0;
-    border-top-right-radius: 4px;
+/* Sidebar styling */
+.css-1d391kg {
+    background-color: var(--surface-color);
+    border-right: 1px solid var(--border-color);
 }
 
-.assistant-message {
-    background-color: transparent;
-    padding: 12px 0;
-    margin: 8px 0;
+/* Chat messages styling */
+.chat-message {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 0;
 }
 
-/* Avatar styling */
-.message-avatar {
+.chat-avatar {
+    flex-shrink: 0;
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    margin-right: 12px;
+    overflow: hidden;
     background-color: var(--secondary-color);
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-/* Welcome message */
-.welcome-container {
-    text-align: center;
-    padding: 2rem;
-    color: var(--text-secondary);
+.chat-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
-.welcome-container h2 {
-    font-size: 24px;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    color: var(--text-color);
+.chat-content {
+    flex: 1;
+    min-width: 0;
 }
 
-/* Assistant info */
-.assistant-info {
-    background-color: #f8f9fa;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    border-left: 4px solid var(--primary-color);
+.user-message .chat-content {
+    background-color: var(--secondary-color);
+    padding: 0.75rem 1rem;
+    border-radius: var(--border-radius);
+    border-top-left-radius: var(--border-radius-sm);
 }
 
-/* Theme toggle */
-.theme-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
+.assistant-message .chat-content {
+    padding: 0.75rem 0;
 }
 
-/* Stop button */
-.stop-button {
-    background-color: var(--error-color);
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-/* Loading indicator */
-.loading-dots {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-}
-
-.loading-dots::after {
-    content: "⏳";
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Code block styling */
-pre {
-    background-color: #f4f4f4;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 16px;
-    overflow-x: auto;
-    font-family: 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
-}
-
-/* Hide Streamlit elements */
-.stDeployButton {
-    display: none;
-}
-
-#MainMenu {
-    visibility: hidden;
-}
-
-.stFooter {
-    display: none;
-}
-
-/* Custom button styling */
+/* Button styling */
 .stButton > button {
     background-color: var(--primary-color);
     color: white;
     border: none;
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius);
     font-weight: 500;
     transition: background-color 0.2s ease;
+    font-family: var(--font-family);
 }
 
 .stButton > button:hover {
     background-color: var(--primary-hover);
 }
 
-/* Sidebar styling */
-.css-1d391kg {
-    padding-top: 1rem;
+/* New chat button */
+.new-chat-btn {
+    width: 100%;
+    background-color: var(--primary-color) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: var(--border-radius) !important;
+    font-weight: 500 !important;
+    padding: 0.75rem 1rem !important;
+    margin-bottom: 1rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+}
+
+/* Text input styling */
+.stTextArea textarea {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-family: var(--font-family);
+    padding: 0.75rem 1rem;
+    min-height: 48px;
+    max-height: 200px;
+}
+
+.stTextArea textarea:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 1px var(--primary-color);
+}
+
+/* Select box styling */
+.stSelectbox > div > div {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--background-color);
+}
+
+/* Radio button styling for theme */
+.stRadio > div {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Custom conversation item */
+.conversation-item {
+    padding: 0.5rem 1rem;
+    margin-bottom: 0.25rem;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-color);
+}
+
+.conversation-item:hover {
+    background-color: var(--secondary-color);
+}
+
+.conversation-item.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+/* Loading indicator */
+.loading-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    color: var(--text-secondary);
+}
+
+/* Welcome message */
+.welcome-message {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--text-secondary);
+}
+
+.welcome-message h2 {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
+}
+
+/* Theme selector */
+.theme-selector {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.theme-btn {
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    background: transparent;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+}
+
+.theme-btn.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+/* Stop button */
+.stop-btn {
+    background-color: var(--error-color) !important;
+    color: white !important;
+    border: none !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: var(--border-radius-sm) !important;
+    font-size: 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+}
+
+/* Assistant info */
+.assistant-description {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin-top: 0.25rem;
+    line-height: 1.3;
+}
+
+/* Error message */
+.error-message {
+    background-color: rgba(239, 68, 68, 0.1);
+    border: 1px solid var(--error-color);
+    color: var(--error-color);
+    padding: 0.75rem 1rem;
+    border-radius: var(--border-radius);
+    margin: 0.5rem 0;
+}
+
+/* Code blocks */
+pre {
+    background-color: var(--secondary-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius) !important;
+    padding: 1rem !important;
+    overflow-x: auto !important;
+    font-family: var(--font-mono) !important;
+    font-size: 14px !important;
+    line-height: 1.4 !important;
+}
+
+code {
+    font-family: var(--font-mono) !important;
+    font-size: 0.9em !important;
+    background-color: var(--secondary-color) !important;
+    padding: 0.2em 0.4em !important;
+    border-radius: var(--border-radius-sm) !important;
+}
+
+/* Hide streamlit branding */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--secondary-color);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
 }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-
-# Configuration classes
-class ChatModel:
-    def __init__(self, id: str, name: str, context_window: int, max_tokens: int):
-        self.id = id
-        self.name = name
-        self.context_window = context_window
-        self.max_tokens = max_tokens
-
-
-class AssistantConfig:
-    def __init__(self, id: str, name: str, description: str):
-        self.id = id
-        self.name = name
-        self.description = description
-
-
-# Available models and assistants
+# Configurações e modelos disponíveis
 AVAILABLE_MODELS = {
-    "gpt-4o": ChatModel("gpt-4o", "GPT-4o", 128000, 4096),
-    "gpt-4o-mini": ChatModel("gpt-4o-mini", "GPT-4o Mini", 128000, 16384),
-    "o3-mini": ChatModel("o3-mini", "O3 Mini", 128000, 65536),
+    "gpt-4o": {
+        "id": "gpt-4o",
+        "name": "GPT-4o",
+        "context_window": 128000,
+        "max_tokens": 4096,
+    },
+    "gpt-4o-mini": {
+        "id": "gpt-4o-mini",
+        "name": "GPT-4o Mini",
+        "context_window": 128000,
+        "max_tokens": 16384,
+    },
+    "o3-mini": {
+        "id": "o3-mini",
+        "name": "O3 Mini",
+        "context_window": 128000,
+        "max_tokens": 65536,
+    },
 }
 
 AVAILABLE_ASSISTANTS = {
-    "organizador_atas": AssistantConfig(
-        "asst_gl4svzGMPxoDMYskRHzK62Fk",
-        "Organizador de Atas",
-        "Especialista em organizar e estruturar atas de reunião",
-    ),
-    "criador_propostas": AssistantConfig(
-        "asst_gqDpEGoOpRvpUai7fdVxgg4d",
-        "Criador de Propostas Comerciais",
-        "Especialista em criar propostas comerciais persuasivas",
-    ),
+    "organizador_atas": {
+        "id": "asst_gl4svzGMPxoDMYskRHzK62Fk",
+        "name": "Organizador de Atas",
+        "description": "Especialista em organizar e estruturar atas de reunião",
+    },
+    "criador_propostas": {
+        "id": "asst_gqDpEGoOpRvpUai7fdVxgg4d",
+        "name": "Criador de Propostas Comerciais",
+        "description": "Especialista em criar propostas comerciais persuasivas",
+    },
 }
 
-DEFAULT_MODEL = "gpt-4o"
-DEFAULT_ASSISTANT = "organizador_atas"
 
-
-# Initialize session state
-def initialize_session_state():
-    if "chat_id" not in st.session_state:
-        st.session_state.chat_id = str(uuid.uuid4())
-
-    if "conversation_history" not in st.session_state:
-        st.session_state.conversation_history = []
-
-    if "thread_id" not in st.session_state:
-        st.session_state.thread_id = None
-
-    if "current_assistant" not in st.session_state:
-        st.session_state.current_assistant = DEFAULT_ASSISTANT
-
-    if "current_model" not in st.session_state:
-        st.session_state.current_model = DEFAULT_MODEL
-
-    if "is_generating" not in st.session_state:
-        st.session_state.is_generating = False
-
-    if "theme" not in st.session_state:
-        st.session_state.theme = "light"
+# Inicialização do estado da sessão
+def init_session_state():
+    """Inicializa o estado da sessão"""
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
     if "conversations" not in st.session_state:
         st.session_state.conversations = {}
 
+    if "current_conversation_id" not in st.session_state:
+        st.session_state.current_conversation_id = str(uuid.uuid4())
 
-# Initialize OpenAI client
-@st.cache_resource
+    if "current_assistant" not in st.session_state:
+        st.session_state.current_assistant = "organizador_atas"
+
+    if "current_model" not in st.session_state:
+        st.session_state.current_model = "gpt-4o"
+
+    if "theme" not in st.session_state:
+        st.session_state.theme = "light"
+
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = None
+
+    if "is_generating" not in st.session_state:
+        st.session_state.is_generating = False
+
+
 def get_openai_client():
-    api_key = st.secrets.get("OPENAI_API_KEY", "")
-    if not api_key:
-        st.error(
-            "OpenAI API key not found in secrets. Please add OPENAI_API_KEY to your Streamlit secrets."
-        )
+    """Inicializa o cliente OpenAI"""
+    try:
+        # Tenta pegar a API key dos secrets do Streamlit
+        api_key = st.secrets.get("OPENAI_API_KEY", "")
+        if not api_key:
+            # Fallback para variável de ambiente
+            api_key = os.getenv("OPENAI_API_KEY", "")
+
+        if not api_key:
+            st.error(
+                "⚠️ API key da OpenAI não encontrada. Configure OPENAI_API_KEY nos secrets do Streamlit."
+            )
+            st.stop()
+
+        return OpenAI(api_key=api_key)
+    except Exception as e:
+        st.error(f"❌ Erro ao inicializar cliente OpenAI: {str(e)}")
         st.stop()
 
-    return OpenAI(api_key=api_key)
+
+def create_avatar_image(role: str) -> str:
+    """Cria uma imagem de avatar simples usando base64"""
+    if role == "user":
+        # SVG simples para usuário
+        svg = """
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="16" fill="#007acc"/>
+            <circle cx="16" cy="12" r="5" fill="white"/>
+            <path d="M6 28c0-5.5 4.5-10 10-10s10 4.5 10 10" fill="white"/>
+        </svg>
+        """
+    else:
+        # SVG simples para assistente
+        svg = """
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="16" fill="#22c55e"/>
+            <path d="M12 12h8v2h-8zm0 4h8v2h-8zm0 4h5v2h-5z" fill="white"/>
+            <circle cx="8" cy="8" r="2" fill="white"/>
+            <circle cx="24" cy="8" r="2" fill="white"/>
+        </svg>
+        """
+
+    # Converte SVG para base64
+    svg_bytes = svg.encode("utf-8")
+    svg_base64 = base64.b64encode(svg_bytes).decode("utf-8")
+    return f"data:image/svg+xml;base64,{svg_base64}"
 
 
-# Utility functions
-def generate_conversation_title(messages: List[Dict]) -> str:
-    """Generate conversation title from first user message"""
-    for msg in messages:
-        if msg.get("role") == "user":
-            content = msg.get("content", "")
-            return content[:50] + ("..." if len(content) > 50 else "")
-    return "New Conversation"
+def display_message(role: str, content: str):
+    """Exibe uma mensagem no chat"""
+    avatar_url = create_avatar_image(role)
 
+    message_class = "user-message" if role == "user" else "assistant-message"
 
-def save_conversation():
-    """Save current conversation to session state"""
-    if st.session_state.conversation_history:
-        conversation = {
-            "id": st.session_state.chat_id,
-            "title": generate_conversation_title(st.session_state.conversation_history),
-            "messages": st.session_state.conversation_history.copy(),
-            "timestamp": datetime.now().isoformat(),
-            "assistant": st.session_state.current_assistant,
-        }
-        st.session_state.conversations[st.session_state.chat_id] = conversation
-
-
-def load_conversation(conv_id: str):
-    """Load a specific conversation"""
-    if conv_id in st.session_state.conversations:
-        conversation = st.session_state.conversations[conv_id]
-        st.session_state.chat_id = conv_id
-        st.session_state.conversation_history = conversation["messages"].copy()
-        st.session_state.current_assistant = conversation.get(
-            "assistant", DEFAULT_ASSISTANT
-        )
-        st.session_state.thread_id = None  # Reset thread when loading conversation
-
-
-def start_new_conversation():
-    """Start a new conversation"""
-    # Save current conversation if it has messages
-    if st.session_state.conversation_history:
-        save_conversation()
-
-    # Reset state
-    st.session_state.chat_id = str(uuid.uuid4())
-    st.session_state.conversation_history = []
-    st.session_state.thread_id = None
-    st.session_state.is_generating = False
-
-
-# Assistant API functions
-def stream_assistant_response(message: str, client: OpenAI) -> str:
-    """Stream response from OpenAI Assistant"""
-    try:
-        assistant_config = AVAILABLE_ASSISTANTS[st.session_state.current_assistant]
-
-        # Create or use existing thread
-        if not st.session_state.thread_id:
-            thread = client.beta.threads.create()
-            st.session_state.thread_id = thread.id
-
-            # Add conversation history to thread
-            for msg in st.session_state.conversation_history[-10:]:  # Last 10 messages
-                if msg["role"] in ["user", "assistant"]:
-                    client.beta.threads.messages.create(
-                        thread_id=st.session_state.thread_id,
-                        role=msg["role"],
-                        content=msg["content"],
-                    )
-
-        # Add current message to thread
-        client.beta.threads.messages.create(
-            thread_id=st.session_state.thread_id, role="user", content=message
-        )
-
-        # Create and run assistant
-        run = client.beta.threads.runs.create(
-            thread_id=st.session_state.thread_id,
-            assistant_id=assistant_config.id,
-        )
-
-        # Poll for completion
-        max_polling_time = 300  # 5 minutes
-        polling_start = time.time()
-
-        while True:
-            if time.time() - polling_start > max_polling_time:
-                return "Response timed out. Please try again."
-
-            run = client.beta.threads.runs.retrieve(
-                thread_id=st.session_state.thread_id, run_id=run.id
-            )
-
-            if run.status == "completed":
-                # Get the latest assistant message
-                messages = client.beta.threads.messages.list(
-                    thread_id=st.session_state.thread_id, order="desc", limit=1
-                )
-
-                if messages.data and messages.data[0].role == "assistant":
-                    message = messages.data[0]
-                    if message.content and message.content[0].type == "text":
-                        return message.content[0].text.value
-
-                return "No response received."
-
-            elif run.status == "failed":
-                error_msg = (
-                    run.last_error.message if run.last_error else "Unknown error"
-                )
-                return f"Assistant run failed: {error_msg}"
-
-            elif run.status in ["cancelled", "expired"]:
-                return f"Assistant run {run.status}"
-
-            elif run.status == "requires_action":
-                return "Assistant requires action (not supported)"
-
-            # Still running, wait a bit
-            time.sleep(1)
-
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
-# Main interface
-def main():
-    initialize_session_state()
-    client = get_openai_client()
-
-    # Sidebar
-    with st.sidebar:
-        st.title("🤖 ChatGPT Interface")
-
-        # New Chat Button
-        if st.button("➕ New Chat", use_container_width=True):
-            start_new_conversation()
-            st.rerun()
-
-        st.divider()
-
-        # Conversations List
-        st.subheader("Conversations")
-        if st.session_state.conversations:
-            for conv_id, conversation in reversed(
-                list(st.session_state.conversations.items())
-            ):
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    if st.button(
-                        conversation["title"],
-                        key=f"conv_{conv_id}",
-                        use_container_width=True,
-                        type=(
-                            "secondary"
-                            if conv_id != st.session_state.chat_id
-                            else "primary"
-                        ),
-                    ):
-                        load_conversation(conv_id)
-                        st.rerun()
-
-                with col2:
-                    if st.button("🗑️", key=f"del_{conv_id}", help="Delete conversation"):
-                        del st.session_state.conversations[conv_id]
-                        if conv_id == st.session_state.chat_id:
-                            start_new_conversation()
-                        st.rerun()
-        else:
-            st.info("No conversations yet")
-
-        st.divider()
-
-        # Settings
-        st.subheader("Settings")
-
-        # Assistant Selection
-        assistant_options = {k: v.name for k, v in AVAILABLE_ASSISTANTS.items()}
-        selected_assistant = st.selectbox(
-            "Assistente:",
-            options=list(assistant_options.keys()),
-            format_func=lambda x: assistant_options[x],
-            index=list(assistant_options.keys()).index(
-                st.session_state.current_assistant
-            ),
-        )
-
-        if selected_assistant != st.session_state.current_assistant:
-            if st.session_state.conversation_history:
-                if st.button("Confirm Assistant Change", type="primary"):
-                    st.session_state.current_assistant = selected_assistant
-                    start_new_conversation()
-                    st.rerun()
-                st.warning("Changing assistant will start a new conversation.")
-            else:
-                st.session_state.current_assistant = selected_assistant
-
-        # Display assistant info
-        assistant_info = AVAILABLE_ASSISTANTS[st.session_state.current_assistant]
-        st.info(f"**{assistant_info.name}**\n\n{assistant_info.description}")
-
-        # Model Selection
-        model_options = {k: v.name for k, v in AVAILABLE_MODELS.items()}
-        st.session_state.current_model = st.selectbox(
-            "Modelo:",
-            options=list(model_options.keys()),
-            format_func=lambda x: model_options[x],
-            index=list(model_options.keys()).index(st.session_state.current_model),
-        )
-
-        # Theme Selection
-        theme = st.radio(
-            "Theme:",
-            options=["light", "dark"],
-            index=0 if st.session_state.theme == "light" else 1,
-            horizontal=True,
-        )
-        st.session_state.theme = theme
-
-        st.divider()
-
-        # App Info
-        st.caption("ChatGPT Interface v2.0")
-        st.caption(f"Chat ID: {st.session_state.chat_id[:8]}...")
-
-    # Main content area
     st.markdown(
         f"""
-    <div class="chat-container">
-        <div style="text-align: center; margin-bottom: 2rem;">
-            <h1>ChatGPT</h1>
-            <p style="color: #666; margin: 0;">
-                {AVAILABLE_ASSISTANTS[st.session_state.current_assistant].name}
-            </p>
+    <div class="chat-message {message_class}">
+        <div class="chat-avatar">
+            <img src="{avatar_url}" alt="{role.title()}">
+        </div>
+        <div class="chat-content">
+            {content if role == "user" else ""}
         </div>
     </div>
     """,
         unsafe_allow_html=True,
     )
 
-    # Display conversation or welcome message
-    if not st.session_state.conversation_history:
+    # Para mensagens do assistente, usa st.markdown para renderizar markdown
+    if role == "assistant":
+        st.markdown(content)
+
+
+def generate_conversation_title(message: str) -> str:
+    """Gera um título para a conversa baseado na primeira mensagem"""
+    if len(message) > 50:
+        return message[:47] + "..."
+    return message
+
+
+def save_conversation():
+    """Salva a conversa atual"""
+    if st.session_state.chat_history:
+        conversation = {
+            "id": st.session_state.current_conversation_id,
+            "title": generate_conversation_title(
+                st.session_state.chat_history[0]["content"]
+            ),
+            "messages": st.session_state.chat_history.copy(),
+            "timestamp": datetime.now().isoformat(),
+            "assistant": st.session_state.current_assistant,
+            "model": st.session_state.current_model,
+        }
+        st.session_state.conversations[st.session_state.current_conversation_id] = (
+            conversation
+        )
+
+
+def start_new_conversation():
+    """Inicia uma nova conversa"""
+    save_conversation()
+    st.session_state.current_conversation_id = str(uuid.uuid4())
+    st.session_state.chat_history = []
+    st.session_state.thread_id = None
+    st.rerun()
+
+
+def load_conversation(conversation_id: str):
+    """Carrega uma conversa existente"""
+    if conversation_id in st.session_state.conversations:
+        conversation = st.session_state.conversations[conversation_id]
+        st.session_state.current_conversation_id = conversation_id
+        st.session_state.chat_history = conversation["messages"]
+        st.session_state.current_assistant = conversation.get(
+            "assistant", "organizador_atas"
+        )
+        st.session_state.current_model = conversation.get("model", "gpt-4o")
+        st.session_state.thread_id = None  # Reset thread ID for new conversation
+        st.rerun()
+
+
+def stream_assistant_response(
+    client: OpenAI, message: str, assistant_id: str, thread_id: Optional[str] = None
+):
+    """Processa resposta usando OpenAI Assistants API com streaming simulado"""
+    try:
+        # Cria ou usa thread existente
+        if not thread_id:
+            thread = client.beta.threads.create()
+            thread_id = thread.id
+            st.session_state.thread_id = thread_id
+
+            # Adiciona histórico da conversa ao thread
+            for msg in st.session_state.chat_history[-10:]:  # Últimas 10 mensagens
+                if msg["role"] in ["user", "assistant"]:
+                    client.beta.threads.messages.create(
+                        thread_id=thread_id, role=msg["role"], content=msg["content"]
+                    )
+
+        # Adiciona mensagem atual do usuário
+        client.beta.threads.messages.create(
+            thread_id=thread_id, role="user", content=message
+        )
+
+        # Cria e executa o assistente
+        run = client.beta.threads.runs.create(
+            thread_id=thread_id, assistant_id=assistant_id
+        )
+
+        # Container para a resposta
+        response_container = st.empty()
+        full_response = ""
+
+        # Polling para aguardar conclusão
+        max_polling_time = 300  # 5 minutos
+        polling_start = time.time()
+
+        while True:
+            if time.time() - polling_start > max_polling_time:
+                st.error(
+                    "⏰ Timeout: A resposta do assistente demorou muito para ser processada."
+                )
+                break
+
+            run = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+
+            if run.status == "completed":
+                # Busca a última mensagem do assistente
+                messages = client.beta.threads.messages.list(
+                    thread_id=thread_id, order="desc", limit=1
+                )
+
+                if messages.data and messages.data[0].role == "assistant":
+                    message_content = messages.data[0]
+                    if (
+                        message_content.content
+                        and message_content.content[0].type == "text"
+                    ):
+                        content = message_content.content[0].text.value
+
+                        # Simula streaming exibindo palavra por palavra
+                        words = content.split(" ")
+                        for i, word in enumerate(words):
+                            if i > 0:
+                                full_response += " "
+                            full_response += word
+                            response_container.markdown(full_response + "▋")
+                            time.sleep(0.03)
+
+                        # Exibe resposta final sem cursor
+                        response_container.markdown(full_response)
+                        return full_response
+                break
+
+            elif run.status == "failed":
+                error_msg = (
+                    run.last_error.message if run.last_error else "Erro desconhecido"
+                )
+                st.error(f"❌ Falha na execução do assistente: {error_msg}")
+                break
+
+            elif run.status in ["cancelled", "expired"]:
+                st.warning(f"⚠️ Execução do assistente {run.status}")
+                break
+
+            elif run.status == "requires_action":
+                st.warning("⚠️ Assistente requer ação (não suportado nesta interface)")
+                break
+
+            # Aguarda um pouco antes de verificar novamente
+            time.sleep(1)
+
+    except Exception as e:
+        st.error(f"❌ Erro ao processar resposta do assistente: {str(e)}")
+        return None
+
+
+def main():
+    """Função principal da aplicação"""
+    init_session_state()
+    client = get_openai_client()
+
+    # Aplica tema
+    if st.session_state.theme == "dark":
+        st.markdown('<div data-theme="dark">', unsafe_allow_html=True)
+
+    # Sidebar
+    with st.sidebar:
+        # Header da sidebar com botão New Chat
+        st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
+        if st.button("➕ New Chat", key="new_chat", help="Start a new conversation"):
+            start_new_conversation()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # Lista de conversas
+        st.markdown("### 💬 Conversations")
+
+        if st.session_state.conversations:
+            for conv_id, conversation in reversed(
+                list(st.session_state.conversations.items())
+            ):
+                is_active = conv_id == st.session_state.current_conversation_id
+
+                # Botão da conversa
+                button_style = "active" if is_active else ""
+                if st.button(
+                    conversation["title"],
+                    key=f"conv_{conv_id}",
+                    help=f"Loaded on {conversation['timestamp'][:10]}",
+                ):
+                    load_conversation(conv_id)
+        else:
+            st.markdown("*No conversations yet*")
+
+        st.divider()
+
+        # Configurações
+        st.markdown("### ⚙️ Settings")
+
+        # Seleção do assistente
+        st.markdown("**Assistant:**")
+        current_assistant = st.selectbox(
+            "Choose assistant",
+            options=list(AVAILABLE_ASSISTANTS.keys()),
+            format_func=lambda x: AVAILABLE_ASSISTANTS[x]["name"],
+            index=list(AVAILABLE_ASSISTANTS.keys()).index(
+                st.session_state.current_assistant
+            ),
+            key="assistant_select",
+            label_visibility="collapsed",
+        )
+
+        if current_assistant != st.session_state.current_assistant:
+            if st.session_state.chat_history:
+                st.warning("⚠️ Changing assistant will start a new conversation.")
+                if st.button("Confirm Change", key="confirm_assistant_change"):
+                    st.session_state.current_assistant = current_assistant
+                    start_new_conversation()
+            else:
+                st.session_state.current_assistant = current_assistant
+
+        # Descrição do assistente
+        assistant_info = AVAILABLE_ASSISTANTS[st.session_state.current_assistant]
         st.markdown(
-            f"""
-        <div class="welcome-container">
-            <h2>Nova Conversa com {AVAILABLE_ASSISTANTS[st.session_state.current_assistant].name}</h2>
-            <p>{AVAILABLE_ASSISTANTS[st.session_state.current_assistant].description}</p>
-        </div>
-        """,
+            f'<div class="assistant-description">{assistant_info["description"]}</div>',
             unsafe_allow_html=True,
         )
-    else:
-        # Display conversation history
-        for i, message in enumerate(st.session_state.conversation_history):
-            if message["role"] == "user":
-                with st.container():
-                    col1, col2 = st.columns([1, 10])
-                    with col1:
-                        st.markdown("👤", help="User")
-                    with col2:
-                        st.markdown(
-                            f'<div class="user-message">{message["content"]}</div>',
-                            unsafe_allow_html=True,
-                        )
 
-            elif message["role"] == "assistant":
-                with st.container():
-                    col1, col2 = st.columns([1, 10])
-                    with col1:
-                        st.markdown("🤖", help="Assistant")
-                    with col2:
-                        st.markdown(message["content"])
+        # Seleção do modelo
+        st.markdown("**Model:**")
+        current_model = st.selectbox(
+            "Choose model",
+            options=list(AVAILABLE_MODELS.keys()),
+            format_func=lambda x: AVAILABLE_MODELS[x]["name"],
+            index=list(AVAILABLE_MODELS.keys()).index(st.session_state.current_model),
+            key="model_select",
+            label_visibility="collapsed",
+        )
+        st.session_state.current_model = current_model
 
-    # Stop generation button
-    if st.session_state.is_generating:
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button(
-                "⏹ Stop Generation", type="secondary", use_container_width=True
-            ):
+        # Seletor de tema
+        st.markdown("**Theme:**")
+        theme_col1, theme_col2 = st.columns(2)
+
+        with theme_col1:
+            if st.button("🌞", key="light_theme", help="Light theme"):
+                st.session_state.theme = "light"
+                st.rerun()
+
+        with theme_col2:
+            if st.button("🌙", key="dark_theme", help="Dark theme"):
+                st.session_state.theme = "dark"
+                st.rerun()
+
+        st.divider()
+
+        # Info da aplicação
+        st.markdown("**ChatGPT Interface v2.0**")
+        st.markdown("*Streamlit Version*")
+
+    # Área principal
+    st.markdown(
+        f"""
+    <div class="chat-header">
+        <h1>ChatGPT</h1>
+        <span class="current-assistant">{AVAILABLE_ASSISTANTS[st.session_state.current_assistant]['name']}</span>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    # Container de mensagens
+    messages_container = st.container()
+
+    with messages_container:
+        if not st.session_state.chat_history:
+            # Mensagem de boas-vindas
+            st.markdown(
+                f"""
+            <div class="welcome-message">
+                <h2>Welcome to ChatGPT Interface</h2>
+                <p>Using <strong>{AVAILABLE_ASSISTANTS[st.session_state.current_assistant]['name']}</strong></p>
+                <p>{AVAILABLE_ASSISTANTS[st.session_state.current_assistant]['description']}</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+        else:
+            # Exibe histórico de mensagens
+            for message in st.session_state.chat_history:
+                display_message(message["role"], message["content"])
+
+    # Área de input
+    st.markdown("---")
+
+    # Input de mensagem
+    col1, col2 = st.columns([6, 1])
+
+    with col1:
+        user_input = st.text_area(
+            "Message",
+            placeholder="Type your message here...",
+            height=100,
+            max_chars=4000,
+            key="message_input",
+            label_visibility="collapsed",
+        )
+
+    with col2:
+        send_button = st.button(
+            "➤",
+            key="send_button",
+            help="Send message",
+            disabled=st.session_state.is_generating or not user_input.strip(),
+        )
+
+        # Botão de parar (quando gerando)
+        if st.session_state.is_generating:
+            if st.button("⏹ Stop", key="stop_button", help="Stop generation"):
                 st.session_state.is_generating = False
                 st.rerun()
 
-    # Input area
-    st.markdown("---")
-
-    # Message input
-    with st.form(key="message_form", clear_on_submit=True):
-        message_input = st.text_area(
-            "Type your message here...",
-            height=100,
-            max_chars=4000,
-            disabled=st.session_state.is_generating,
-            label_visibility="collapsed",
-            placeholder="Type your message here... (Shift+Enter for new line)",
-        )
-
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            send_button = st.form_submit_button(
-                "Send →" if not st.session_state.is_generating else "Generating...",
-                disabled=st.session_state.is_generating or not message_input.strip(),
-                use_container_width=True,
-                type="primary",
-            )
-
-    # Handle message submission
-    if send_button and message_input.strip() and not st.session_state.is_generating:
+    # Processa envio de mensagem
+    if send_button and user_input.strip() and not st.session_state.is_generating:
         st.session_state.is_generating = True
 
-        # Add user message to conversation
-        user_message = {"role": "user", "content": message_input.strip()}
-        st.session_state.conversation_history.append(user_message)
+        # Adiciona mensagem do usuário
+        user_message = {"role": "user", "content": user_input.strip()}
+        st.session_state.chat_history.append(user_message)
 
-        # Show generating status
-        with st.status("Generating response...", expanded=True) as status:
-            st.write("Processing your message...")
+        # Exibe mensagem do usuário
+        display_message("user", user_input.strip())
 
-            # Generate response
-            response = stream_assistant_response(message_input.strip(), client)
+        # Gera resposta do assistente
+        assistant_config = AVAILABLE_ASSISTANTS[st.session_state.current_assistant]
 
-            # Add assistant response to conversation
+        with st.spinner("🤖 Generating response..."):
+            response = stream_assistant_response(
+                client,
+                user_input.strip(),
+                assistant_config["id"],
+                st.session_state.thread_id,
+            )
+
+        if response:
+            # Adiciona resposta do assistente
             assistant_message = {"role": "assistant", "content": response}
-            st.session_state.conversation_history.append(assistant_message)
+            st.session_state.chat_history.append(assistant_message)
 
-            status.update(label="Response generated!", state="complete")
+            # Salva conversa
+            save_conversation()
 
-        # Save conversation and reset generating state
-        save_conversation()
         st.session_state.is_generating = False
+
+        # Limpa input e rerun
+        st.session_state.message_input = ""
         st.rerun()
+
+    # Tecla Enter para enviar (JavaScript)
+    st.markdown(
+        """
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const textarea = document.querySelector('textarea[aria-label="Message"]');
+        if (textarea) {
+            textarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    const sendButton = document.querySelector('button[title="Send message"]');
+                    if (sendButton) {
+                        sendButton.click();
+                    }
+                }
+            });
+        }
+    });
+    </script>
+    """,
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":
