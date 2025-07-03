@@ -17,11 +17,13 @@
 !*.ico
 !*.webmanifest
 !*.js
+!*.toml
 
 !*.env.example
 
 # Ignorar especificamente
 config.json
+secrets.toml
 .env
 .venv
 __pycache__
