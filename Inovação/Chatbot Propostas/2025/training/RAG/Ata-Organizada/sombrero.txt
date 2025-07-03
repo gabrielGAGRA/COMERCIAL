@@ -46,3 +46,61 @@ geração de relatórios no BI é mais urgente
 
 
 ATA ORGANIZADA:
+Contexto do Cliente: 
+presidente da sombrero
+diretor técnico da sombrero, subscrição de riscos e sinistros
+seguradora de grandes riscos, principalmente agronegócio
+fellipe mais técnico, leonardo é advogado
+marcio é o diretor técnico da sombrero, subscrição de riscos e sinistros
+
+Situação Atual e Dores: 
+tem problema de ter boas ideias para fazer com dados mas não tem braço, capacidade de pessoas para fazer o trabalho, se aprofundar, descer no detalhe
+tem grande volume de dados recebido mas poderiam explorar muito melhor essa base de dados para gerar insights, relatórios
+tem um BI estático, mas precisariam de muito mais relatórios, geração a partir do BI
+tem muitas coisas passando mas faltam muitas ideias
+tem feito muito negócio, tem muito dado de apólice, sinistro, muita cotação que perde negócio
+não usam nenhuma ferramenta de analytics para identificar tendências que podem apontar fraudes em sinistro, entender se laudos são inteligentes ou não, comparar um perito com outro, comparar um produtor rural com outro para entender se há indício de fraude
+precisam ter diversificação de risco, fazem análise de onde ter negócios de forma empírica hoje
+análises de precificação feitas de forma manual, sem automação
+parte de precificação não está dentro do ERP, negócios que ainda não sabem se vai fechar não estão nele
+transacional de operações que não são o core da empresa não tem todas as informações
+dependência do pessoal de TI para extrair relatórios
+falta de ferramentas para antecipar preço e cobertura de risco para próxima safra
+
+Objetivos e Resultados Desejados: 
+automatizar processos para gerar gráficos dinâmicos, relatórios, insights de oportunidades de melhoria
+gerar informação de forma automatizada para apoiar decisões humanas
+tirar mais relatórios para as áreas, filtrando informações relevantes
+dar geral na base de dados para moldar próximos passos
+ter ferramentas que ajudem a antecipar preço e cobertura de risco para a próxima safra
+modelo que sugira valor para seguro agrícola
+
+Infraestrutura e Dados: 
+tem material rico
+operação sem papel, seguradora 100% digital, tem controle de cada apólice emitida, cada negócio, sistema SRO de registro de operações em que cada operação é devidamente registrada
+desde nascimento com sistema único, que tenha o mínimo de customização, que seja mais robusto mas que gere consistências de dados, mas não para gerar informações, mas para mexer em estruturação, não é feito para retroalimentar decisões, eles entendem que tem informação, tem como fazer essa transformação
+BI é muito relacionado a grandes planilhas, para o dia a dia, para fazer extração de dados
+mil sinistros por safra, 10 mil apólices geram isso, desses parte está coberto e paga indenização e parte não
+sistema ERP E4Pro, faz emissão de apólice, documentação de sinistro, área financeira
+precificação está fora do ERP, sistemas menores integrados por API
+coração da empresa é o E4Pro
+granularidade muito grande de informação, quantidade de linhas de apólices em 3 anos e pouco tem aproximadamente 100 mil, garantia deu 18 mil, apólice gera endosso, gera sinistro que gera um número adicional de sinistro
+60 mil, 70 mil registros, sessão de resseguro para cada apólice
+apólice tem vigência de 12 meses, se deu sinistro ou não apaga
+acabaram de implementar CRM em Salesforce
+
+Informações Relevantes Adicionais: 
+empresa da UFRJ teve projeto com eles
+tem muita correlação com seguros
+empresa júnior pode cobrar mais barato (eles estão buscando isso)
+área de substituição de agrícola, produtos e precificação
+
+Informações Não Prioritárias: 
+Leonardo.
+em março começaram uma empresa de tecnologia voltada a seguros, fornece a outras seguradoras
+Reembolso de despesas para colaboradores não está no ERP
+relacionamento com o cliente, com o fornecedor é importante
+cada safra nova é diferente da anterior
+área de seguro agrícola
+presidência, ver muito mais coisa
+financeiro com área meio, área técnica, 5 ou 6 áreas de subscrição, 1 área de sinistro e 1 área de risco, 1 área de resseguro e 1 área

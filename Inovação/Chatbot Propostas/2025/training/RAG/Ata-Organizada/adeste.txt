@@ -23,3 +23,22 @@ Não quer escopo fechado -> quer dinamismo e mudança -> disse que está propens
 
 
 ATA ORGANIZADA:
+Contexto do Cliente: 
+Trazer tecnologia a favor do negócio
+
+Situação Atual e Dores: 
+Cadeia de Supply -> Inboud (marketing)  -> captura de matéria prima -> desafio de dados para apoiar a cadeia de suprimento para fazer uma melhor compra de matéria prima -> time caçando as informações da Internet. 
+Diário oficial da União -> extrair -> cruzar com infos de outros diários de outros países pra ficar mais preciso DOU.gov 
+IA para extrair LinkedIn, Google Ads e outros canais -> cruzar infos -> montar uma dashboard de resultados e métricas do marketing
+
+Objetivos e Resultados Desejados: 
+Fala muito de IA para ajudar em extrações, ajudar em análises e etc.
+
+Infraestrutura e Dados: 
+Usam DataBricks, DataFabric, PBI. SAP é o ERP.
+
+Informações Relevantes Adicionais: 
+Não quer escopo fechado -> quer dinamismo e mudança -> disse que está propenso a fechar se trouxermos isso
+
+Informações Não Prioritárias: 
+Rodrigo Martins -> 8 anos de Adeste -> tecnologia da informação na UNESP
